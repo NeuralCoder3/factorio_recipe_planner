@@ -1,19 +1,72 @@
-# from mip import *
-# iron = Integer('iron')
-
-
-from z3 import *
 import time
 from dataclasses import dataclass
 from collections import defaultdict
 
-# s = Solver()
-s = Optimize()
+# mode = "z3"
+mode = "mip"
 
 # objective = "overhead"
 objective = "inputs"
+
 goal_item = "green_circuit"
 goal_quality = 2
+
+
+
+if mode == "mip":
+    from mip import *
+    s = Model(sense=MINIMIZE, solver_name=CBC)
+    
+    def Real(name):
+        return s.add_var(name=name, var_type=CONTINUOUS)
+
+    def add_constraint(expr):
+        global s
+        s += expr
+        
+    def minimize_objective(obj):
+        global s
+        s.objective = minimize(obj)
+
+    s.add = add_constraint
+    s.minimize = minimize_objective
+    s.check = lambda: s.optimize()
+    sat = OptimizationStatus.OPTIMAL
+    
+    class FloatWrapper:
+        def __init__(self, x):
+            self.x = x
+            
+        def numerator_as_long(self):
+            return self.x
+        
+        def denominator_as_long(self):
+            return 1
+    
+    class Model:
+        def __init__(self, s):
+            pass
+        
+        def evaluate(self, expr):
+            if isinstance(expr, int):
+                return expr
+            value = expr.x
+            if isinstance(value, float):
+                return FloatWrapper(value)
+            return value
+        
+        # make subscripting work
+        def __getitem__(self, key):
+            return self.evaluate(key)
+        
+    s.model = lambda: Model(s)
+        
+elif mode == "z3":
+    from z3 import *
+    s = Optimize()
+else:
+    raise ValueError(f"Unknown mode {mode}")
+
 
 # map from resource -> quality -> amount
 # per default, all resources are zero
@@ -107,6 +160,7 @@ recipes = [
 
 # recipe -> quality -> amount
 recipe_amounts = defaultdict(lambda: {})
+recycle_amounts = defaultdict(lambda: {})
 # recipe -> quality -> module -> amount
 modules_amounts = \
     defaultdict(lambda: # recipe
@@ -134,11 +188,13 @@ for ri, recipe in enumerate(recipes):
             s.add(prod_amount >= 0)
             s.add(quality_amount+prod_amount <= machine.module_slots)
             
+            # s.add(Or(And(quality_amount == machine.module_slots, prod_amount == 0), And(quality_amount == 0, prod_amount == machine.module_slots)))
             s.add(quality_amount == machine.module_slots)
             s.add(prod_amount == 0)
             
-            # prod_amount = 0
-            # quality_amount = machine.module_slots
+            prod_amount = 0
+            quality_amount = machine.module_slots
+            
             modules_amounts[ri][q][quality_module_percentage] = quality_amount
             modules_amounts[ri][q][productivity_module_name] = prod_amount
             
@@ -173,6 +229,7 @@ elif objective == "overhead":
     objective = sum(sum(quality_amounts.values()) for quality_amounts in resources.values())
 else:
     raise ValueError(f"Unknown objective {objective}")
+
 s.minimize(objective)
 
 # with open("quality.lp", "w") as f:
