@@ -47,6 +47,9 @@ if mode == "mip":
     
     def Real(name):
         return s.add_var(name=name, var_type=CONTINUOUS)
+    
+    def Int(name):
+        return s.add_var(name=name, var_type=INTEGER)
 
     def add_constraint(expr):
         global s
@@ -93,6 +96,9 @@ elif mode == "gurobi":
     
     def Real(name):
         return s.addVar(lb=0, name=name)
+    
+    def Int(name):
+        return s.addVar(vtype=GRB.INTEGER, lb=0, name=name)
     
     def add_constraint(expr):
         global s
@@ -252,15 +258,17 @@ for ri, recipe in enumerate(recipes):
             # * prod
             # split with quality
             
-            prod_amount = Real(f"prod_{ri}_q{q}") if recipe.accepts_productivity else 0
-            quality_amount = Real(f"quality_{ri}_q{q}") if recipe.accepts_quality else 0
+            # prod_amount = Real(f"prod_{ri}_q{q}") if recipe.accepts_productivity else 0
+            # quality_amount = Real(f"quality_{ri}_q{q}") if recipe.accepts_quality else 0
+            prod_amount = Int(f"prod_{ri}_q{q}") if recipe.accepts_productivity else 0
+            quality_amount = Int(f"quality_{ri}_q{q}") if recipe.accepts_quality else 0
             s.add(quality_amount >= 0)
             s.add(prod_amount >= 0)
             s.add(quality_amount+prod_amount <= machine.module_slots)
             
             # s.add(Or(And(quality_amount == machine.module_slots, prod_amount == 0), And(quality_amount == 0, prod_amount == machine.module_slots)))
-            s.add(quality_amount == machine.module_slots)
-            s.add(prod_amount == 0)
+            # s.add(quality_amount == machine.module_slots)
+            # s.add(prod_amount == 0)
             
             # prod_amount = 0
             # quality_amount = machine.module_slots
@@ -269,7 +277,10 @@ for ri, recipe in enumerate(recipes):
             modules_amounts[ri][q][productivity_module_name] = prod_amount
             
             # base_amount_prod = base_amount * (1 + productivity_module_percentage * prod_amount)
-            base_amount_prod = base_amount
+            
+            # encode cubic constraint via bilinear method => double quadratic constraints
+            base_amount_prod = Real(f"prod_amount_{ri}_q{q}")
+            s.add(base_amount_prod == base_amount * (1 + productivity_module_percentage * prod_amount))
             
             percent_sum = 0
             # TODO: better sum directly instead of iterative
