@@ -5,13 +5,18 @@
 from z3 import *
 import time
 from dataclasses import dataclass
+from collections import defaultdict
 
 # s = Solver()
 s = Optimize()
 
-resources = {}
+# map from resource -> quality -> amount
+# per default, all resources are zero
+# only for normal (quality=0) resources, we want the amount to be a Real
+resources = defaultdict(lambda: defaultdict(lambda: 0))
 for resource in ["iron", "copper"]:
-    resources[resource] = Real(resource)
+    resources[resource][0] = Real(resource)
+# deep copy
 original_resources = resources.copy()
 
 @dataclass
@@ -35,6 +40,9 @@ assembler = Machine(
     speed=1.25
 )
 
+# 0 = normal, 1 = uncommon, 2 = rare
+max_quality = 2
+
 recipes = [
     Recipe(
         name="Copper Wire",
@@ -56,33 +64,25 @@ recipes = [
     )
 ]
 
-recipe_amounts = {}
-
-all_resources = set()
-all_resources.update(resources.keys())
-for recipe in recipes:
-    for resource in recipe.inputs.keys() | recipe.outputs.keys():
-        all_resources.add(resource)
-
-# init products
-for resource in all_resources:
-    if resource not in resources:
-        resources[resource] = 0
+recipe_amounts = defaultdict(lambda: {})
 
 for ri, recipe in enumerate(recipes):
-    recipe_amounts[ri] = Real(f"recipe_{ri}")
-    for resource, amount in recipe.inputs.items():
-        resources[resource] -= recipe_amounts[ri] * amount
-    for resource, amount in recipe.outputs.items():
-        resources[resource] += recipe_amounts[ri] * amount
+    for q in range(max_quality):
+        recipe_amounts[ri][q] = Real(f"recipe_{ri}_q{q}")
+        for resource, amount in recipe.inputs.items():
+            resources[resource][q] -= recipe_amounts[ri][q] * amount
+        for resource, amount in recipe.outputs.items():
+            resources[resource][q] += recipe_amounts[ri][q] * amount
 
 # no resource can be negative
-for resource in resources:
-    s.add(resources[resource] >= 0)
+for resource, quality_amounts in resources.items():
+    for quality, amount in quality_amounts.items():
+        s.add(amount >= 0)
 
 # we want green circuits
-s.add(resources["green_circuits"] >= 1)
-s.minimize(sum(original_resources.values()))
+goal_resource = resources["green_circuits"][0]
+s.add(goal_resource >= 1)
+s.minimize(sum(sum(quality_amounts.values()) for quality_amounts in original_resources.values()))
 
 print("Solving...")
 t0 = time.time()
@@ -94,8 +94,10 @@ if res == sat:
     print("Solution found")
     print()
     m = s.model()
-    print(f"Producing {m.evaluate(resources['green_circuits'])} green circuits")
+    print(f"Producing {m.evaluate(goal_resource)} green circuits")
     for ri, recipe in enumerate(recipes):
-        print(f"Recipe {recipe.name} crafted in assembler: {m[recipe_amounts[ri]]}")
+        print(f"{recipe.name} crafted in assembler: ")
+        for q in range(max_quality):
+            print(f"  Quality {q}: {m[recipe_amounts[ri][q]]}")
 else:
     print("No solution found")
