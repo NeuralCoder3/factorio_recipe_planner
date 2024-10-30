@@ -4,63 +4,85 @@
 
 from z3 import *
 import time
+from dataclasses import dataclass
 
 # s = Solver()
 s = Optimize()
 
-iron = Real('iron')
-copper = Real('copper')
+resources = {}
+for resource in ["iron", "copper"]:
+    resources[resource] = Real(resource)
+original_resources = resources.copy()
 
-# iron_plates = Real('iron_plates')
-# copper_wire = Real('copper_wire')
+@dataclass
+class Machine:
+    name : str
+    module_slots : int
+    productivity : float = 0
+    speed : float = 1
 
-# green_circuits = Real('green_circuits')
+@dataclass
+class Recipe:
+    machine : Machine
+    inputs: dict[str, int]
+    outputs: dict[str, int]
+    name: str | None = None
+    accepts_productivity : bool = True
+    
+assembler = Machine(
+    "Assembler", 
+    module_slots=4, 
+    speed=1.25
+)
 
-v_iron = iron
-v_copper = copper
-# v_green_circuits = green_circuits
+recipes = [
+    Recipe(
+        name="Copper Wire",
+        machine=assembler,
+        inputs={"copper": 1},
+        outputs={"copper_wire": 2}
+    ),
+    Recipe(
+        name="Iron Plates",
+        machine=assembler,
+        inputs={"iron": 1},
+        outputs={"iron_plates": 1}
+    ),
+    Recipe(
+        name="Green Circuits",
+        machine=assembler,
+        inputs={"copper_wire": 3, "iron_plates": 1},
+        outputs={"green_circuits": 1}
+    )
+]
 
-# intermediates/products are a priori zero -> nothing there
-copper_wire = 0
-iron_plates = 0
-green_circuits = 0
+recipe_amounts = {}
 
-# craft copper wire 
-# from copper
-# in assembler
-copper_wire_assembler = Real('copper_wire_assembler')
-copper_wire += 2*copper_wire_assembler
-copper -= 1*copper_wire_assembler
+all_resources = set()
+all_resources.update(resources.keys())
+for recipe in recipes:
+    for resource in recipe.inputs.keys() | recipe.outputs.keys():
+        all_resources.add(resource)
 
+# init products
+for resource in all_resources:
+    if resource not in resources:
+        resources[resource] = 0
 
-# craft iron plates
-# from iron
-# in assembler
-iron_plates_assembler = Real('iron_plates_assembler')
-iron_plates += 1*iron_plates_assembler
-iron -= 1*iron_plates_assembler
+for ri, recipe in enumerate(recipes):
+    recipe_amounts[ri] = Real(f"recipe_{ri}")
+    for resource, amount in recipe.inputs.items():
+        resources[resource] -= recipe_amounts[ri] * amount
+    for resource, amount in recipe.outputs.items():
+        resources[resource] += recipe_amounts[ri] * amount
 
-
-# craft green circuits
-# from copper_wire and iron_plates
-# in assembler
-green_circuits_assembler = Real('green_circuits_assembler')
-green_circuits += green_circuits_assembler
-copper_wire -= 3*green_circuits_assembler
-iron_plates -= 1*green_circuits_assembler
-
-# all inputs are non-negative
-s.add(copper >= 0)
-s.add(iron >= 0)
-# all intermediates are non-negative
-s.add(copper_wire >= 0)
-s.add(iron_plates >= 0)
-s.add(green_circuits >= 0)
-
+# no resource can be negative
+for resource in resources:
+    s.add(resources[resource] >= 0)
 
 # we want green circuits
-s.add(green_circuits >= 1)
-s.minimize(iron + copper)
+s.add(resources["green_circuits"] >= 1)
+s.minimize(sum(original_resources.values()))
 
 print("Solving...")
 t0 = time.time()
@@ -72,11 +94,8 @@ if res == sat:
     print("Solution found")
     print()
     m = s.model()
-    print(f"Producing {m.evaluate(green_circuits)} green circuits")
-    print(f"Iron: {m[v_iron]}, Copper: {m[v_copper]}")
-    print(f"Copper wire crafted in assembler: {m[copper_wire_assembler]}")
-    print(f"Iron plates crafted in assembler: {m[iron_plates_assembler]}")
-    print(f"Green circuits crafted in assembler: {m[green_circuits_assembler]}")
-    # print(f"Iron: {m[iron]}, Copper: {m[copper]}")
+    print(f"Producing {m.evaluate(resources['green_circuits'])} green circuits")
+    for ri, recipe in enumerate(recipes):
+        print(f"Recipe {recipe.name} crafted in assembler: {m[recipe_amounts[ri]]}")
 else:
     print("No solution found")
