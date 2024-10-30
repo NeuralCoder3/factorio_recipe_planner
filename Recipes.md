@@ -69,8 +69,6 @@ quality:
 - percent/100 for q+3 
 - ...
 
-
-first: no modules
-then only modules 2, no quality
-
-
+TODO:
+- speed
+- recycle
