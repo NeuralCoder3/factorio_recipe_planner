@@ -9,8 +9,19 @@ mode = "gurobi"
 # objective = "overhead"
 objective = "inputs"
 
-goal_item = "green_circuit"
+# goal_item = "green_circuit"
+# goal_quality = 2
+goal_item = "red_circuit"
 goal_quality = 2
+
+input_items = ["iron_ore", "copper_ore", "coal", "petroleum_gas"]
+rarities = ["normal", "uncommon", "rare", "epic", "legendary"]
+max_quality = 2
+quality_module_percentage = 0.02 # 2% for quality level 2 module
+productivity_module_percentage = 0.06 # 6% for productivity level 2 module
+quality_module_name = "quality"
+productivity_module_name = "productivity"
+
 
 class Wrapper:
     def __init__(self, obj):
@@ -31,10 +42,10 @@ class Wrapper:
 # for multiple non-z3 solvers that directly return a float
 class FloatWrapper(Wrapper):
     def __init__(self, obj):
+        obj = abs(obj)
         super().__init__(obj)
         self.numerator_as_long = lambda : self.obj
         self.denominator_as_long = lambda : 1
-        # self.__str__ = lambda : str(self.obj)
         
     def __str__(self):
         # format overloading is difficult => do it manual for now
@@ -123,20 +134,21 @@ elif mode == "gurobi":
         def __init__(self, s):
             pass
         
-        def evaluate(self, expr):
-            if isinstance(expr, int):
-                return expr
-            value = expr.getValue()
+        def access(self, e, f):
+            if isinstance(e, int):
+                return e
+            value = f(e)
             if isinstance(value, float):
                 return FloatWrapper(value)
             return value
         
+        
+        def evaluate(self, expr):
+            return self.access(expr, lambda x: x.getValue())
+        
         # make subscripting work
         def __getitem__(self, key):
-            value = key.X
-            if isinstance(value, float):
-                return FloatWrapper(value)
-            return value
+            return self.access(key, lambda x: x.X)
         
     s.model = lambda: Model(s)
     
@@ -149,17 +161,10 @@ else:
 # only for normal (quality=0) resources, we want the amount to be a Real
 resources = defaultdict(lambda: defaultdict(lambda: 0))
 inputs = defaultdict(lambda: defaultdict(lambda: 0))
-for resource in ["iron_ore", "copper_ore"]:
+for resource in input_items:
     v = Real(resource)
     resources[resource][0] = v
     inputs[resource][0] = v
-    
-rarities = ["normal", "uncommon", "rare", "epic", "legendary"]
-max_quality = 2
-quality_module_percentage = 0.02 # 2% for quality level 2 module
-productivity_module_percentage = 0.06 # 6% for productivity level 2 module
-quality_module_name = "quality"
-productivity_module_name = "productivity"
 
 
 @dataclass
@@ -189,11 +194,11 @@ def qualityName(quality, padding=True):
         return name
     return " " * (max_len - len(name)) + name # + f" ({quality})"
     
-# miner = Machine(
-#     "Miner",
-#     module_slots=3,
-#     speed=1 # TODO: 
-# )
+miner = Machine(
+    "Miner",
+    module_slots=3,
+    speed=0.5
+)
 
 smelter = Machine(
     "Smelter",
@@ -205,6 +210,12 @@ assembler = Machine(
     "Assembler", 
     module_slots=4, 
     speed=1.25
+)
+
+chemical_plant = Machine(
+    "Chemical Plant",
+    module_slots=3,
+    speed=1
 )
 
 recipes = [
@@ -231,6 +242,19 @@ recipes = [
         machine=assembler,
         inputs={"copper_wire": 3, "iron_plate": 1},
         outputs={"green_circuit": 1}
+    ),
+    Recipe(
+        name="Plastic",
+        machine=chemical_plant,
+        inputs={"coal": 1, "petroleum_gas": 20},
+        outputs={"plastic": 2},
+        accepts_quality=False
+    ),
+    Recipe(
+        name="Red Circuits",
+        machine=assembler,
+        inputs={"copper_wire": 4, "plastic": 2, "green_circuit": 2},
+        outputs={"red_circuit": 1}
     )
 ]
 
@@ -258,25 +282,14 @@ for ri, recipe in enumerate(recipes):
             # * prod
             # split with quality
             
-            # prod_amount = Real(f"prod_{ri}_q{q}") if recipe.accepts_productivity else 0
-            # quality_amount = Real(f"quality_{ri}_q{q}") if recipe.accepts_quality else 0
             prod_amount = Int(f"prod_{ri}_q{q}") if recipe.accepts_productivity else 0
             quality_amount = Int(f"quality_{ri}_q{q}") if recipe.accepts_quality else 0
             s.add(quality_amount >= 0)
             s.add(prod_amount >= 0)
             s.add(quality_amount+prod_amount <= machine.module_slots)
             
-            # s.add(Or(And(quality_amount == machine.module_slots, prod_amount == 0), And(quality_amount == 0, prod_amount == machine.module_slots)))
-            # s.add(quality_amount == machine.module_slots)
-            # s.add(prod_amount == 0)
-            
-            # prod_amount = 0
-            # quality_amount = machine.module_slots
-            
             modules_amounts[ri][q][quality_module_percentage] = quality_amount
             modules_amounts[ri][q][productivity_module_name] = prod_amount
-            
-            # base_amount_prod = base_amount * (1 + productivity_module_percentage * prod_amount)
             
             # encode cubic constraint via bilinear method => double quadratic constraints
             base_amount_prod = Real(f"prod_amount_{ri}_q{q}")
@@ -288,8 +301,6 @@ for ri, recipe in enumerate(recipes):
             for q2 in range(q+1,max_quality+1):
                 percent_sum += percentage
                 resources[resource][q2] += base_amount_prod * percentage
-                # simplify as we either have quality or prod but not both
-                # a * (1+prod) * quality = a * quality + a * prod * quality = a * quality
                 percentage /= 10
             resources[resource][q] += base_amount_prod * (1-percent_sum)
 
@@ -316,11 +327,7 @@ else:
 
 s.minimize(objective)
 
-# with open("quality.lp", "w") as f:
-#     f.write(s.to_smt2())
-
 print("Solving...")
-# print("using objective", objective)
 t0 = time.time()
 res = s.check()
 t1 = time.time()
