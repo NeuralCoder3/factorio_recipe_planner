@@ -68,7 +68,3 @@ quality:
 - percent/10 for q+2
 - percent/100 for q+3 
 - ...
-
-TODO:
-- speed
-- recycle

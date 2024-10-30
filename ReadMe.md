@@ -93,3 +93,17 @@ We showcase a nice overloading strategy to allow an easy switch between `z3`, `p
 A special hurdle is the combination of quality and productivity (which can be necessary in certain circumstances).
 We get `output * recipe_amount * (1+prod_modules*prod) * (quality_modules*quality)` items.
 However, this is a cubic constraint. We can encode the constraint as a quadratic one using auxiliary variables for one of the multiplications.
+
+
+## (Possibly) Related Projects
+
+I have not yet looked into these projects but they are the first results if [searching](https://github.com/search?q=factorio+quality&type=repositories&s=updated&o=desc&p=1) for recent projects relating to Factorio quality.
+
+- https://github.com/scottmsul/FactorioQualityOptimizer
+- https://github.com/csp256/HackyFactorioQualityCalculator
+
+## TODOs
+
+- Compute factory count via speed => give machine count
+- Add foundry, electro magnetic, ...
+- Add recycler
