@@ -10,17 +10,19 @@ from collections import defaultdict
 # s = Solver()
 s = Optimize()
 
+# objective = "overhead"
+objective = "inputs"
+
 # map from resource -> quality -> amount
 # per default, all resources are zero
 # only for normal (quality=0) resources, we want the amount to be a Real
 resources = defaultdict(lambda: defaultdict(lambda: 0))
 inputs = defaultdict(lambda: defaultdict(lambda: 0))
-for resource in ["iron", "copper"]:
+for resource in ["iron_ore", "copper_ore"]:
     v = Real(resource)
     resources[resource][0] = v
     inputs[resource][0] = v
 # deep copy
-objective = sum(sum(quality_amounts.values()) for quality_amounts in inputs.values())
 
 @dataclass
 class Machine:
@@ -38,6 +40,18 @@ class Recipe:
     accepts_productivity : bool = True
     accepts_quality : bool = True
     
+# miner = Machine(
+#     "Miner",
+#     module_slots=3,
+#     speed=1 # TODO: 
+# )
+
+smelter = Machine(
+    "Smelter",
+    module_slots=2,
+    speed=2
+)
+    
 assembler = Machine(
     "Assembler", 
     module_slots=4, 
@@ -49,22 +63,28 @@ max_quality = 2
 
 recipes = [
     Recipe(
-        name="Copper Wire",
-        machine=assembler,
-        inputs={"copper": 1},
-        outputs={"copper_wire": 2}
+        name="Copper Smelting",
+        machine=smelter,
+        inputs={"copper_ore": 1},
+        outputs={"copper_plate": 1}
     ),
     Recipe(
-        name="Iron Plates",
+        name="Iron Smelting",
+        machine=smelter,
+        inputs={"iron_ore": 1},
+        outputs={"iron_plate": 1}
+    ),
+    Recipe(
+        name="Copper Wire",
         machine=assembler,
-        inputs={"iron": 1},
-        outputs={"iron_plates": 1}
+        inputs={"copper_plate": 1},
+        outputs={"copper_wire": 2}
     ),
     Recipe(
         name="Green Circuits",
         machine=assembler,
-        inputs={"copper_wire": 3, "iron_plates": 1},
-        outputs={"green_circuits": 1}
+        inputs={"copper_wire": 3, "iron_plate": 1},
+        outputs={"green_circuit": 1}
     )
 ]
 
@@ -94,11 +114,22 @@ for ri, recipe in enumerate(recipes):
 for resource, quality_amounts in resources.items():
     for quality, amount in quality_amounts.items():
         s.add(amount >= 0)
+        
+# no negative machines
+for ri, recipe in enumerate(recipes):
+    for q in range(max_quality+1):
+        s.add(recipe_amounts[ri][q] >= 0)
 
-# we want green circuits
-goal_resource = resources["green_circuits"][2]
+goal_resource = resources["green_circuit"][2]
 s.add(goal_resource >= 1)
-# objective = sum(sum(quality_amounts.values()) for quality_amounts in original_resources.values())
+
+org_objective =  objective
+if objective == "inputs":
+    objective = sum(sum(quality_amounts.values()) for quality_amounts in inputs.values())
+elif objective == "overhead":
+    objective = sum(sum(quality_amounts.values()) for quality_amounts in resources.values())
+else:
+    raise ValueError(f"Unknown objective {objective}")
 s.minimize(objective)
 
 print("Solving...")
@@ -116,6 +147,7 @@ if res == sat:
     print()
     m = s.model()
     print(f"Producing {m.evaluate(goal_resource)} green circuits")
+    print(f"Objective ({org_objective}): {get_float(m.evaluate(objective)):.2f}")
     
     print()
     print("Resources:")
@@ -128,7 +160,7 @@ if res == sat:
     print()
     print("Machines:")
     for ri, recipe in enumerate(recipes):
-        print(f"  {recipe.name} crafted in assembler: ")
+        print(f"  {recipe.name} crafted in {recipe.machine.name}: ")
         for q in range(max_quality+1):
             print(f"    Q{q}: {get_float(m[recipe_amounts[ri][q]]):.2f}")
             
