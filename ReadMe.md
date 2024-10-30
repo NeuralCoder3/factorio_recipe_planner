@@ -84,6 +84,10 @@ Productivity just produces more products in general.
 
 The modules can at most add up to the available module slots and are integer variables.
 
+Fluids need special consideration as they can not have any quality.
+They are always produces as "normal" fluids.
+Any fluid used in a recipe is ignored for quality constraints.
+
 We showcase a nice overloading strategy to allow an easy switch between `z3`, `python-mip`, and `gurobi` (which is the fastest and as only one able to solve with variable productivity and quality modules).
 
 A special hurdle is the combination of quality and productivity (which can be necessary in certain circumstances).

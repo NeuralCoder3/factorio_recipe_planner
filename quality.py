@@ -181,7 +181,6 @@ class Recipe:
     outputs: dict[str, int]
     name: str | None = None
     accepts_productivity : bool = True
-    accepts_quality : bool = True
     
 def itemName(internal_name):
     # iron_ore => Iron Ore
@@ -193,6 +192,8 @@ def qualityName(quality, padding=True):
     if not padding:
         return name
     return " " * (max_len - len(name)) + name # + f" ({quality})"
+
+fluids = set(["water", "crude_oil", "heavy_oil", "light_oil", "petroleum_gas", "sulfuric_acid", "lubricant"])
     
 miner = Machine(
     "Miner",
@@ -248,7 +249,6 @@ recipes = [
         machine=chemical_plant,
         inputs={"coal": 1, "petroleum_gas": 20},
         outputs={"plastic": 2},
-        accepts_quality=False
     ),
     Recipe(
         name="Red Circuits",
@@ -265,17 +265,24 @@ recycle_amounts = defaultdict(lambda: {})
 modules_amounts = \
     defaultdict(lambda: # recipe
         defaultdict(lambda: # quality
-            # defaultdict(lambda: 0) # module
             {}
         )
     )
 
 for ri, recipe in enumerate(recipes):
     machine = recipe.machine
-    for q in range(max_quality+1):
+    accepts_quality = not(all(out in fluids for out in recipe.outputs))
+    quality_range = range(max_quality+1) if accepts_quality else [0]
+    for q in quality_range:
         recipe_amounts[ri][q] = Real(f"recipe_{ri}_q{q}")
+        s.add(recipe_amounts[ri][q] >= 0)
         for resource, amount in recipe.inputs.items():
-            resources[resource][q] -= recipe_amounts[ri][q] * amount
+            if resource in fluids:
+                # fluids are always quality 0 => only use at quality 0
+                # they do not contribute to quality considerations
+                resources[resource][0] -= recipe_amounts[ri][q] * amount
+            else:
+                resources[resource][q] -= recipe_amounts[ri][q] * amount
             
         for resource, amount in recipe.outputs.items():
             base_amount = recipe_amounts[ri][q] * amount
@@ -283,7 +290,7 @@ for ri, recipe in enumerate(recipes):
             # split with quality
             
             prod_amount = Int(f"prod_{ri}_q{q}") if recipe.accepts_productivity else 0
-            quality_amount = Int(f"quality_{ri}_q{q}") if recipe.accepts_quality else 0
+            quality_amount = Int(f"quality_{ri}_q{q}") if accepts_quality else 0
             s.add(quality_amount >= 0)
             s.add(prod_amount >= 0)
             s.add(quality_amount+prod_amount <= machine.module_slots)
@@ -296,12 +303,13 @@ for ri, recipe in enumerate(recipes):
             s.add(base_amount_prod == base_amount * (1 + productivity_module_percentage * prod_amount))
             
             percent_sum = 0
-            # TODO: better sum directly instead of iterative
-            percentage = quality_amount * quality_module_percentage
-            for q2 in range(q+1,max_quality+1):
-                percent_sum += percentage
-                resources[resource][q2] += base_amount_prod * percentage
-                percentage /= 10
+            if accepts_quality:
+                # TODO: better sum directly instead of iterative
+                percentage = quality_amount * quality_module_percentage
+                for q2 in range(q+1,max_quality+1):
+                    percent_sum += percentage
+                    resources[resource][q2] += base_amount_prod * percentage
+                    percentage /= 10
             resources[resource][q] += base_amount_prod * (1-percent_sum)
 
 # no resource can be negative
@@ -309,11 +317,6 @@ for resource, quality_amounts in resources.items():
     for quality, amount in quality_amounts.items():
         s.add(amount >= 0)
         
-# no negative machines
-for ri, recipe in enumerate(recipes):
-    for q in range(max_quality+1):
-        s.add(recipe_amounts[ri][q] >= 0)
-
 goal_resource = resources[goal_item][goal_quality]
 s.add(goal_resource >= 1)
 
@@ -357,6 +360,8 @@ if res == sat:
     for ri, recipe in enumerate(recipes):
         print(f"  {recipe.name} crafted in {recipe.machine.name}: ")
         for q in range(max_quality+1):
+            if q not in recipe_amounts[ri]:
+                continue
             amount = get_float(m[recipe_amounts[ri][q]])
             if amount > 0:
                 prod_amount = m[modules_amounts[ri][q][productivity_module_name]]
