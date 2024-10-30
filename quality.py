@@ -27,6 +27,11 @@ for resource in ["iron_ore", "copper_ore"]:
     
 rarities = ["normal", "uncommon", "rare", "epic", "legendary"]
 max_quality = 2
+quality_module_percentage = 0.02 # 2% for quality level 2 module
+productivity_module_percentage = 0.06 # 6% for productivity level 2 module
+quality_module_name = "quality"
+productivity_module_name = "productivity"
+
 
 @dataclass
 class Machine:
@@ -100,27 +105,53 @@ recipes = [
     )
 ]
 
+# recipe -> quality -> amount
 recipe_amounts = defaultdict(lambda: {})
+# recipe -> quality -> module -> amount
+modules_amounts = \
+    defaultdict(lambda: # recipe
+        defaultdict(lambda: # quality
+            # defaultdict(lambda: 0) # module
+            {}
+        )
+    )
 
 for ri, recipe in enumerate(recipes):
+    machine = recipe.machine
     for q in range(max_quality+1):
         recipe_amounts[ri][q] = Real(f"recipe_{ri}_q{q}")
         for resource, amount in recipe.inputs.items():
             resources[resource][q] -= recipe_amounts[ri][q] * amount
-        for resource, amount in recipe.outputs.items():
-            # resources[resource][q] += recipe_amounts[ri][q] * amount
             
-            # assuming 4 quality 3 => 10%
+        for resource, amount in recipe.outputs.items():
+            base_amount = recipe_amounts[ri][q] * amount
+            # * prod
+            # split with quality
+            
+            prod_amount = Real(f"prod_{ri}_q{q}") if recipe.accepts_productivity else 0
+            quality_amount = Real(f"quality_{ri}_q{q}") if recipe.accepts_quality else 0
+            s.add(quality_amount >= 0)
+            s.add(prod_amount >= 0)
+            s.add(quality_amount+prod_amount <= machine.module_slots)
+            
+            s.add(quality_amount == machine.module_slots)
+            s.add(prod_amount == 0)
+            
+            # prod_amount = 0
+            # quality_amount = machine.module_slots
+            modules_amounts[ri][q][quality_module_percentage] = quality_amount
+            modules_amounts[ri][q][productivity_module_name] = prod_amount
+            
+            base_amount = base_amount * (1 + productivity_module_percentage * prod_amount)
+            
             percent_sum = 0
-            percentage = 0.1
+            # TODO: better sum directly instead of iterative
+            percentage = quality_amount * quality_module_percentage
             for q2 in range(q+1,max_quality+1):
                 percent_sum += percentage
-                resources[resource][q2] += recipe_amounts[ri][q] * amount * percentage
+                resources[resource][q2] += base_amount * percentage
                 percentage /= 10
-            resources[resource][q] += recipe_amounts[ri][q] * amount * (1-percent_sum)
-            # quality modules
-            # if q < max_quality:
-            #     resources[resource][q+1] += recipe_amounts[ri][q] * amount * 0.1
+            resources[resource][q] += base_amount * (1-percent_sum)
 
 # no resource can be negative
 for resource, quality_amounts in resources.items():
@@ -143,6 +174,9 @@ elif objective == "overhead":
 else:
     raise ValueError(f"Unknown objective {objective}")
 s.minimize(objective)
+
+# with open("quality.lp", "w") as f:
+#     f.write(s.to_smt2())
 
 print("Solving...")
 # print("using objective", objective)
@@ -176,7 +210,9 @@ if res == sat:
         for q in range(max_quality+1):
             amount = get_float(m[recipe_amounts[ri][q]])
             if amount > 0:
-                print(f"    {qualityName(q)}: {amount:.2f}")
+                prod_amount = m[modules_amounts[ri][q][productivity_module_name]]
+                quality_amount = m[modules_amounts[ri][q][quality_module_percentage]]
+                print(f"    {qualityName(q)}: {amount:6.2f} ({itemName(productivity_module_name)}: {prod_amount}, {itemName(quality_module_name)}: {quality_amount})")
             
     print()
     print("Left over resources:")
