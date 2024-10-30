@@ -3,7 +3,8 @@ from dataclasses import dataclass
 from collections import defaultdict
 
 # mode = "z3"
-mode = "mip"
+# mode = "mip"
+mode = "gurobi"
 
 # objective = "overhead"
 objective = "inputs"
@@ -11,9 +12,36 @@ objective = "inputs"
 goal_item = "green_circuit"
 goal_quality = 2
 
+class Wrapper:
+    def __init__(self, obj):
+        self.obj = obj
+        self.overwritten = {}
+        # delayed to avoid infinite recursion in self.obj = obj
+        self.__setattr__ = self.__setattr__2
+        
+    def __setattr__2(self, name, value):
+        self.overwritten[name] = value
+        
+    # forward all non overwritten attributes to the object
+    def __getattr__(self, name):
+        if name in self.overwritten:
+            return self.overwritten[name]
+        return getattr(self.obj, name)
 
-
+# for multiple non-z3 solvers that directly return a float
+class FloatWrapper(Wrapper):
+    def __init__(self, obj):
+        super().__init__(obj)
+        self.numerator_as_long = lambda : self.obj
+        self.denominator_as_long = lambda : 1
+        # self.__str__ = lambda : str(self.obj)
+        
+    def __str__(self):
+        # format overloading is difficult => do it manual for now
+        return f"{self.obj:.2f}"
+        
 if mode == "mip":
+    # compatibility layer for mip to z3
     from mip import *
     s = Model(sense=MINIMIZE, solver_name=CBC)
     
@@ -32,16 +60,6 @@ if mode == "mip":
     s.minimize = minimize_objective
     s.check = lambda: s.optimize()
     sat = OptimizationStatus.OPTIMAL
-    
-    class FloatWrapper:
-        def __init__(self, x):
-            self.x = x
-            
-        def numerator_as_long(self):
-            return self.x
-        
-        def denominator_as_long(self):
-            return 1
     
     class Model:
         def __init__(self, s):
@@ -64,6 +82,58 @@ if mode == "mip":
 elif mode == "z3":
     from z3 import *
     s = Optimize()
+    
+elif mode == "gurobi":
+    
+    from gurobipy import Model, GRB, quicksum
+    
+    s = Model()
+    s = Wrapper(s)
+            
+    
+    def Real(name):
+        return s.addVar(lb=0, name=name)
+    
+    def add_constraint(expr):
+        global s
+        s.addConstr(expr)
+        
+    def minimize_objective(obj):
+        global s
+        s.setObjective(obj, GRB.MINIMIZE)
+        
+    def check():
+        global s
+        s.optimize()
+        print("Status:", s.status)
+        return s.status
+
+    s.add = add_constraint
+    s.minimize = minimize_objective
+    s.check = check
+    sat = 2
+    
+    class Model:
+        def __init__(self, s):
+            pass
+        
+        def evaluate(self, expr):
+            if isinstance(expr, int):
+                return expr
+            value = expr.getValue()
+            if isinstance(value, float):
+                return FloatWrapper(value)
+            return value
+        
+        # make subscripting work
+        def __getitem__(self, key):
+            value = key.X
+            if isinstance(value, float):
+                return FloatWrapper(value)
+            return value
+        
+    s.model = lambda: Model(s)
+    
 else:
     raise ValueError(f"Unknown mode {mode}")
 
@@ -192,22 +262,25 @@ for ri, recipe in enumerate(recipes):
             s.add(quality_amount == machine.module_slots)
             s.add(prod_amount == 0)
             
-            prod_amount = 0
-            quality_amount = machine.module_slots
+            # prod_amount = 0
+            # quality_amount = machine.module_slots
             
             modules_amounts[ri][q][quality_module_percentage] = quality_amount
             modules_amounts[ri][q][productivity_module_name] = prod_amount
             
-            base_amount = base_amount * (1 + productivity_module_percentage * prod_amount)
+            # base_amount_prod = base_amount * (1 + productivity_module_percentage * prod_amount)
+            base_amount_prod = base_amount
             
             percent_sum = 0
             # TODO: better sum directly instead of iterative
             percentage = quality_amount * quality_module_percentage
             for q2 in range(q+1,max_quality+1):
                 percent_sum += percentage
-                resources[resource][q2] += base_amount * percentage
+                resources[resource][q2] += base_amount_prod * percentage
+                # simplify as we either have quality or prod but not both
+                # a * (1+prod) * quality = a * quality + a * prod * quality = a * quality
                 percentage /= 10
-            resources[resource][q] += base_amount * (1-percent_sum)
+            resources[resource][q] += base_amount_prod * (1-percent_sum)
 
 # no resource can be negative
 for resource, quality_amounts in resources.items():
@@ -241,6 +314,7 @@ t0 = time.time()
 res = s.check()
 t1 = time.time()
 print(f"Optimization took {t1-t0:.2f} seconds")
+
 
 def get_float(expr):
     return float(expr.numerator_as_long())/float(expr.denominator_as_long())
@@ -277,7 +351,7 @@ if res == sat:
         print(f"  {itemName(resource)}: ")
         for quality, amount in sorted(quality_amounts.items(), key=lambda x: x[0]):
             amount = get_float(m.evaluate(amount))
-            if amount > 0:
+            if amount > 0.001:
                 print(f"    {qualityName(quality)}: {amount:.2f}")
 else:
     print("No solution found")
