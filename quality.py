@@ -12,6 +12,8 @@ s = Optimize()
 
 # objective = "overhead"
 objective = "inputs"
+goal_item = "green_circuit"
+goal_quality = 2
 
 # map from resource -> quality -> amount
 # per default, all resources are zero
@@ -22,7 +24,9 @@ for resource in ["iron_ore", "copper_ore"]:
     v = Real(resource)
     resources[resource][0] = v
     inputs[resource][0] = v
-# deep copy
+    
+rarities = ["normal", "uncommon", "rare", "epic", "legendary"]
+max_quality = 2
 
 @dataclass
 class Machine:
@@ -39,6 +43,17 @@ class Recipe:
     name: str | None = None
     accepts_productivity : bool = True
     accepts_quality : bool = True
+    
+def itemName(internal_name):
+    # iron_ore => Iron Ore
+    return " ".join([word.capitalize() for word in internal_name.split("_")])
+
+def qualityName(quality, padding=True):
+    max_len = max(len(r) for r in rarities)
+    name = rarities[quality]
+    if not padding:
+        return name
+    return " " * (max_len - len(name)) + name # + f" ({quality})"
     
 # miner = Machine(
 #     "Miner",
@@ -57,9 +72,6 @@ assembler = Machine(
     module_slots=4, 
     speed=1.25
 )
-
-# 0 = normal, 1 = uncommon, 2 = rare
-max_quality = 2
 
 recipes = [
     Recipe(
@@ -120,7 +132,7 @@ for ri, recipe in enumerate(recipes):
     for q in range(max_quality+1):
         s.add(recipe_amounts[ri][q] >= 0)
 
-goal_resource = resources["green_circuit"][2]
+goal_resource = resources[goal_item][goal_quality]
 s.add(goal_resource >= 1)
 
 org_objective =  objective
@@ -146,15 +158,15 @@ if res == sat:
     print("Solution found")
     print()
     m = s.model()
-    print(f"Producing {m.evaluate(goal_resource)} green circuits")
+    print(f"Producing {m.evaluate(goal_resource)} {goal_item} at quality {qualityName(goal_quality, padding=False)}")
     print(f"Objective ({org_objective}): {get_float(m.evaluate(objective)):.2f}")
     
     print()
     print("Resources:")
     for resource, quality_amounts in inputs.items():
-        print(f"  {resource}: ")
+        print(f"  {itemName(resource)}: ")
         for quality, amount in sorted(quality_amounts.items(), key=lambda x: x[0]):
-            print(f"    Q{quality}: {get_float(m[amount]):.2f}")
+            print(f"    {qualityName(quality)}: {get_float(m[amount]):.2f}")
     
     
     print()
@@ -162,13 +174,17 @@ if res == sat:
     for ri, recipe in enumerate(recipes):
         print(f"  {recipe.name} crafted in {recipe.machine.name}: ")
         for q in range(max_quality+1):
-            print(f"    Q{q}: {get_float(m[recipe_amounts[ri][q]]):.2f}")
+            amount = get_float(m[recipe_amounts[ri][q]])
+            if amount > 0:
+                print(f"    {qualityName(q)}: {amount:.2f}")
             
     print()
     print("Left over resources:")
     for resource, quality_amounts in resources.items():
-        print(f"  {resource}: ")
+        print(f"  {itemName(resource)}: ")
         for quality, amount in sorted(quality_amounts.items(), key=lambda x: x[0]):
-            print(f"    Q{quality}: {get_float(m.evaluate(amount)):.2f}")
+            amount = get_float(m.evaluate(amount))
+            if amount > 0:
+                print(f"    {qualityName(quality)}: {amount:.2f}")
 else:
     print("No solution found")
