@@ -1,6 +1,7 @@
 import time
 from dataclasses import dataclass
 from collections import defaultdict
+import math
 
 # mode = "z3"
 # mode = "mip"
@@ -13,12 +14,16 @@ objective = "inputs"
 # goal_quality = 2
 # goal_item = "red_circuit"
 # goal_quality = 2
+# goal_item = "blue_circuit"
+# goal_quality = 2
+
 goal_item = "blue_circuit"
 goal_quality = 2
 
-input_items = ["iron_ore", "copper_ore", "coal", "petroleum_gas", "water"]
+input_items = ["iron_ore_vein", "copper_ore_vein", "coal_vein", "petroleum_gas", "water"]
 rarities = ["normal", "uncommon", "rare", "epic", "legendary"]
 max_quality = 2
+# max_quality = len(rarities)-1
 quality_module_percentage = 0.02 # 2% for quality level 2 module
 productivity_module_percentage = 0.06 # 6% for productivity level 2 module
 recycle_percentage = 0.25
@@ -118,7 +123,7 @@ elif mode == "gurobi":
     s.add = add_constraint
     s.minimize = minimize_objective
     s.check = check
-    sat = 2
+    sat = [2,9] # 2 = optimal, 9 = suboptimal
     
     class Model:
         def __init__(self, s):
@@ -139,6 +144,8 @@ elif mode == "gurobi":
             return self.access(key, lambda x: x.X)
         
     s.model = lambda: Model(s)
+    
+    s.Params.TimeLimit = 10 # in seconds
     
 else:
     raise ValueError(f"Unknown mode {mode}")
@@ -188,6 +195,7 @@ unrecycleable = set(
     list(fluids)+[
         # ambiguous resources (already covered)
         # raw resources
+        "iron_ore_vein", "copper_ore_vein", "coal_vein",
         "iron_ore", "copper_ore", "coal", "stone", "uranium_ore", "raw_fish", "wood", 
         # other processes
         "uranium_235", "uranium_238", 
@@ -222,7 +230,42 @@ chemical_plant = Machine(
     speed=1
 )
 
+recycler = Machine(
+    "Recycler",
+    module_slots=4,
+    speed=0.5
+)
+
+item_productivity = {
+    # miner productivity research
+    "iron_ore": 0.3,
+    "copper_ore": 0.3,
+    "coal": 0.3,
+    # productivity research (e.g. steel)
+}
+
 recipes = [
+    Recipe(
+        name="Mine Copper",
+        machine=miner,
+        inputs={"copper_ore_vein": 1},
+        outputs={"copper_ore": 1},
+        crafting_time=1
+    ),
+    Recipe(
+        name="Mine Iron",
+        machine=miner,
+        inputs={"iron_ore_vein": 1},
+        outputs={"iron_ore": 1},
+        crafting_time=1
+    ),
+    Recipe(
+        name="Mine Coal",
+        machine=miner,
+        inputs={"coal_vein": 1},
+        outputs={"coal": 1},
+        crafting_time=1
+    ),
     Recipe(
         name="Copper Smelting",
         machine=smelter,
@@ -288,9 +331,47 @@ recipes = [
     ),
 ]
 
+recycle_times = {
+    # https://wiki.factorio.com/Recycler
+    # time (in s) per item
+    "blue_circuit": 1/0.8,
+    "red_circuit": 1/1.33,
+    "low_density_structure": 1/0.5,
+}
+
+recycle_recipes = []
+recycle_map = {}
+recipe_count = len(recipes)
+if allow_recycling:
+    i = 0
+    for ri, recipe in enumerate(recipes):
+        if len(recipe.outputs) > 1:
+            continue
+        if any(out in unrecycleable for out in recipe.outputs):
+            continue
+        if all(inp in fluids for inp in recipe.inputs):
+            continue
+        recycle_outputs = {}
+        for inp, amount in recipe.inputs.items():
+            if inp in fluids:
+                continue
+            recycle_outputs[inp] = amount * recycle_percentage
+        output_item = list(recipe.outputs.keys())[0]
+        recycle_recipes.append(
+            Recipe(
+                name=f"Recycle {recipe.name}",
+                machine=recycler,
+                inputs=recipe.outputs,
+                outputs=recycle_outputs,
+                crafting_time=recycle_times.get(output_item, 1),
+                accepts_productivity=False,
+            )
+        )
+        recycle_map[ri] = i+recipe_count
+        i+=1
+
 # recipe -> quality -> amount
 recipe_amounts = defaultdict(lambda: {})
-recycle_amounts = defaultdict(lambda: {})
 # recipe -> quality -> module -> amount
 modules_amounts = \
     defaultdict(lambda: # recipe
@@ -298,21 +379,18 @@ modules_amounts = \
             {}
         )
     )
-
-for ri, recipe in enumerate(recipes):
+    
+all_recipes = recipes + recycle_recipes
+    
+for ri, recipe in enumerate(all_recipes):
     machine = recipe.machine
     accepts_quality = not(all(out in fluids for out in recipe.outputs))
+    # if output can not have quality => skip all stages
     quality_range = range(max_quality+1) if accepts_quality else [0]
-    recycleable = \
-        all(out not in unrecycleable for out in recipe.outputs) and \
-        len(recipe.outputs) == 1 and \
-        not(all(inp in fluids for inp in recipe.inputs)) and \
-        allow_recycling
+    # here if recipe would not accept quality modules (can not happen except for testing)
     for q in quality_range:
         recipe_amounts[ri][q] = Real(f"recipe_{ri}_q{q}")
-        recycle_amounts[ri][q] = Real(f"recycle_{ri}_q{q}") if recycleable else 0
         s.add(recipe_amounts[ri][q] >= 0)
-        s.add(recycle_amounts[ri][q] >= 0)
         
         prod_amount = Int(f"prod_{ri}_q{q}") if recipe.accepts_productivity else 0
         quality_amount = Int(f"quality_{ri}_q{q}") if accepts_quality else 0
@@ -320,7 +398,7 @@ for ri, recipe in enumerate(recipes):
         s.add(prod_amount >= 0)
         s.add(quality_amount+prod_amount <= machine.module_slots)
         
-        modules_amounts[ri][q][quality_module_percentage] = quality_amount
+        modules_amounts[ri][q][quality_module_name] = quality_amount
         modules_amounts[ri][q][productivity_module_name] = prod_amount
         
         for resource, amount in recipe.inputs.items():
@@ -331,8 +409,6 @@ for ri, recipe in enumerate(recipes):
                 # fluids are not recycled
             else:
                 resources[resource][q] -= recipe_amounts[ri][q] * amount
-                resources[resource][q] += recycle_amounts[ri][q] * amount * recycle_percentage
-                # TODO: add quality of recycled resources
             
         for resource, amount in recipe.outputs.items():
             base_amount = recipe_amounts[ri][q] * amount
@@ -341,7 +417,8 @@ for ri, recipe in enumerate(recipes):
             
             # encode cubic constraint via bilinear method => double quadratic constraints
             base_amount_prod = Real(f"prod_amount_{ri}_q{q}_{resource}")
-            s.add(base_amount_prod == base_amount * (1 + productivity_module_percentage * prod_amount))
+            item_prod = item_productivity.get(resource, 0)
+            s.add(base_amount_prod == base_amount * (1 + productivity_module_percentage * prod_amount + item_prod))
             
             percent_sum = 0
             if accepts_quality:
@@ -352,8 +429,6 @@ for ri, recipe in enumerate(recipes):
                     resources[resource][q2] += base_amount_prod * percentage
                     percentage /= 10
             resources[resource][q] += base_amount_prod * (1-percent_sum)
-            # we lose the recycled amount (losses are not affected by quality/prod)
-            resources[resource][q] -= recycle_amounts[ri][q] * amount 
 
 # no resource can be negative
 for resource, quality_amounts in resources.items():
@@ -361,6 +436,9 @@ for resource, quality_amounts in resources.items():
         s.add(amount >= 0)
         
 goal_resource = resources[goal_item][goal_quality]
+# for gurobi to print the resulting formula
+# s.update()
+# print(goal_resource)
 s.add(goal_resource >= 1)
 
 org_objective =  objective
@@ -387,7 +465,13 @@ def get_float(expr):
         return expr
     return float(expr.numerator_as_long())/float(expr.denominator_as_long())
 
-if res == sat:
+satisfied = False
+if isinstance(sat, list):
+    satisfied = res in sat
+else:
+    satisfied = res == sat
+
+if satisfied:
     print("Solution found")
     print()
     m = s.model()
@@ -410,21 +494,45 @@ if res == sat:
             if q not in recipe_amounts[ri]:
                 continue
             amount = get_float(m[recipe_amounts[ri][q]])
-            recycle_amount = get_float(m[recycle_amounts[ri][q]])
-            if amount > 0:
+            if ri in recycle_map and q in recipe_amounts[recycle_map[ri]]:
+                rmi = recycle_map[ri]
+                recycle_amount = get_float(m[recipe_amounts[rmi][q]])
+                recycle_quality = abs(get_float(m[modules_amounts[rmi][q][quality_module_name]]))
+                recycle_recipe = all_recipes[rmi]
+                assert recycle_recipe.machine == recycler
+                # TODO: use modules for time reduction
+                recycler_count = recycle_amount * recycle_recipe.crafting_time / recycle_recipe.machine.speed
+            else:
+                recycle_amount = 0
+            if amount > 0.01:
+                machine_count = amount * recipe.crafting_time / recipe.machine.speed
                 prod_amount = m[modules_amounts[ri][q][productivity_module_name]]
-                quality_amount = m[modules_amounts[ri][q][quality_module_percentage]]
+                quality_amount = m[modules_amounts[ri][q][quality_module_name]]
                 prod_amount = abs(get_float(prod_amount))
                 quality_amount = abs(get_float(quality_amount))
                 s = ""
                 s+=("    ")
                 s+=(f"{qualityName(q)}: {amount:6.2f}")
                 s+=(f" ({itemName(productivity_module_name)}: {prod_amount}, {itemName(quality_module_name)}: {quality_amount})")
-                if recycle_amount > 0:
-                    s+=(f" (recycle: {recycle_amount:6.2f})")
+                if recycle_amount > 0.01:
+                    # TODO: use modules for time reduction
+                    s+=(f" (Recycle: {recycle_amount:6.2f}, {itemName(quality_module_name)}: {recycle_quality})")
+                # s+=("\n")
+                # s+=("    ")
+                # s+=(" "*len(qualityName(q)))
+                # s+=("  ")
+                # s+=(f"{math.ceil(machine_count):3} {recipe.machine.name}")
+                # if recycle_amount > 0.01:
+                #     s+=(", ")
+                #     s+=(f"{math.ceil(recycler_count):3} Recycler")
+                s+=("  => ")
+                s+=(f"{math.ceil(machine_count)} {recipe.machine.name}")
+                if recycle_amount > 0.01:
+                    s+=(", ")
+                    s+=(f"{math.ceil(recycler_count)} Recycler")
                 machine_str.append(s)
         if machine_str:
-            print(f"  {recipe.name} crafted in {recipe.machine.name}: ")
+            print(f"  {recipe.name} in {recipe.machine.name}: ")
             print("\n".join(machine_str))
             
     print()
@@ -433,7 +541,7 @@ if res == sat:
         resource_str = []
         for quality, amount in sorted(quality_amounts.items(), key=lambda x: x[0]):
             amount = get_float(m.evaluate(amount))
-            if amount > 0.001:
+            if amount > 0.01:
                 resource_str.append(f"    {qualityName(quality)}: {amount:.2f}")
         if resource_str:
             print(f"  {itemName(resource)}: ")

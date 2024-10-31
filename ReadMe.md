@@ -108,4 +108,4 @@ I have not yet looked into these projects but they are the first results if [sea
 
 - Compute factory count via speed => give machine count
 - Add foundry, electro magnetic, ...
-- Add recycler
+- Recycle Time (=recipe time?)
