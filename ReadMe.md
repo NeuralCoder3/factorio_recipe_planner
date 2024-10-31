@@ -1,5 +1,7 @@
 # Factorio Recipe Planner
 
+TLDR: We compute what machines to use with MIP/SMT solvers in the presence of quality and productivity modules.
+
 In [Factorio 1](https://www.factorio.com/), recipes were quite simple.
 One had factories that produces a result.
 If we needed one, we had at most two variants and at most productivity modules to create more or speed to create faster.

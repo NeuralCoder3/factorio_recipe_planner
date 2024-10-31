@@ -11,16 +11,20 @@ objective = "inputs"
 
 # goal_item = "green_circuit"
 # goal_quality = 2
-goal_item = "red_circuit"
+# goal_item = "red_circuit"
+# goal_quality = 2
+goal_item = "blue_circuit"
 goal_quality = 2
 
-input_items = ["iron_ore", "copper_ore", "coal", "petroleum_gas"]
+input_items = ["iron_ore", "copper_ore", "coal", "petroleum_gas", "water"]
 rarities = ["normal", "uncommon", "rare", "epic", "legendary"]
 max_quality = 2
 quality_module_percentage = 0.02 # 2% for quality level 2 module
 productivity_module_percentage = 0.06 # 6% for productivity level 2 module
+recycle_percentage = 0.25
 quality_module_name = "quality"
 productivity_module_name = "productivity"
+allow_recycling = True
 
 
 class Wrapper:
@@ -39,18 +43,6 @@ class Wrapper:
             return self.overwritten[name]
         return getattr(self.obj, name)
 
-# for multiple non-z3 solvers that directly return a float
-class FloatWrapper(Wrapper):
-    def __init__(self, obj):
-        obj = abs(obj)
-        super().__init__(obj)
-        self.numerator_as_long = lambda : self.obj
-        self.denominator_as_long = lambda : 1
-        
-    def __str__(self):
-        # format overloading is difficult => do it manual for now
-        return f"{self.obj:.2f}"
-        
 if mode == "mip":
     # compatibility layer for mip to z3
     from mip import *
@@ -83,8 +75,6 @@ if mode == "mip":
             if isinstance(expr, int):
                 return expr
             value = expr.x
-            if isinstance(value, float):
-                return FloatWrapper(value)
             return value
         
         # make subscripting work
@@ -138,8 +128,6 @@ elif mode == "gurobi":
             if isinstance(e, int):
                 return e
             value = f(e)
-            if isinstance(value, float):
-                return FloatWrapper(value)
             return value
         
         
@@ -180,6 +168,7 @@ class Recipe:
     inputs: dict[str, int]
     outputs: dict[str, int]
     name: str | None = None
+    crafting_time : float = 1
     accepts_productivity : bool = True
     
 def itemName(internal_name):
@@ -194,6 +183,20 @@ def qualityName(quality, padding=True):
     return " " * (max_len - len(name)) + name # + f" ({quality})"
 
 fluids = set(["water", "crude_oil", "heavy_oil", "light_oil", "petroleum_gas", "sulfuric_acid", "lubricant"])
+unrecycleable = set(
+    # fluids
+    list(fluids)+[
+        # ambiguous resources (already covered)
+        # raw resources
+        "iron_ore", "copper_ore", "coal", "stone", "uranium_ore", "raw_fish", "wood", 
+        # other processes
+        "uranium_235", "uranium_238", 
+        # smelting
+        "iron_plate", "copper_plate", 
+        # can things that produce more than 1 be recycled?
+        # yes => copper cable works
+    ]
+)
     
 miner = Machine(
     "Miner",
@@ -224,38 +227,65 @@ recipes = [
         name="Copper Smelting",
         machine=smelter,
         inputs={"copper_ore": 1},
-        outputs={"copper_plate": 1}
+        outputs={"copper_plate": 1},
+        crafting_time=3.2
     ),
     Recipe(
         name="Iron Smelting",
         machine=smelter,
         inputs={"iron_ore": 1},
-        outputs={"iron_plate": 1}
+        outputs={"iron_plate": 1},
+        crafting_time=3.2
     ),
     Recipe(
         name="Copper Wire",
         machine=assembler,
         inputs={"copper_plate": 1},
-        outputs={"copper_wire": 2}
+        outputs={"copper_wire": 2},
+        crafting_time=0.5
     ),
     Recipe(
         name="Green Circuits",
         machine=assembler,
         inputs={"copper_wire": 3, "iron_plate": 1},
-        outputs={"green_circuit": 1}
+        outputs={"green_circuit": 1},
+        crafting_time=0.5
     ),
     Recipe(
         name="Plastic",
         machine=chemical_plant,
         inputs={"coal": 1, "petroleum_gas": 20},
         outputs={"plastic": 2},
+        crafting_time=1
     ),
     Recipe(
         name="Red Circuits",
         machine=assembler,
         inputs={"copper_wire": 4, "plastic": 2, "green_circuit": 2},
-        outputs={"red_circuit": 1}
-    )
+        outputs={"red_circuit": 1},
+        crafting_time=6
+    ),
+    Recipe(
+        name="Sulfur",
+        machine=chemical_plant,
+        inputs={"water": 30, "petroleum_gas": 30},
+        outputs={"sulfur": 2},
+        crafting_time=1
+    ),
+    Recipe(
+        name="Sulfuric Acid",
+        machine=chemical_plant,
+        inputs={"iron_plate": 1, "sulfur": 5, "water": 100},
+        outputs={"sulfuric_acid": 50},
+        crafting_time=1
+    ),
+    Recipe(
+        name="Blue Circuit",
+        machine=assembler,
+        inputs={"red_circuit": 2, "green_circuit": 20, "sulfuric_acid": 5},
+        outputs={"blue_circuit": 1},
+        crafting_time=10
+    ),
 ]
 
 # recipe -> quality -> amount
@@ -273,33 +303,44 @@ for ri, recipe in enumerate(recipes):
     machine = recipe.machine
     accepts_quality = not(all(out in fluids for out in recipe.outputs))
     quality_range = range(max_quality+1) if accepts_quality else [0]
+    recycleable = \
+        all(out not in unrecycleable for out in recipe.outputs) and \
+        len(recipe.outputs) == 1 and \
+        not(all(inp in fluids for inp in recipe.inputs)) and \
+        allow_recycling
     for q in quality_range:
         recipe_amounts[ri][q] = Real(f"recipe_{ri}_q{q}")
+        recycle_amounts[ri][q] = Real(f"recycle_{ri}_q{q}") if recycleable else 0
         s.add(recipe_amounts[ri][q] >= 0)
+        s.add(recycle_amounts[ri][q] >= 0)
+        
+        prod_amount = Int(f"prod_{ri}_q{q}") if recipe.accepts_productivity else 0
+        quality_amount = Int(f"quality_{ri}_q{q}") if accepts_quality else 0
+        s.add(quality_amount >= 0)
+        s.add(prod_amount >= 0)
+        s.add(quality_amount+prod_amount <= machine.module_slots)
+        
+        modules_amounts[ri][q][quality_module_percentage] = quality_amount
+        modules_amounts[ri][q][productivity_module_name] = prod_amount
+        
         for resource, amount in recipe.inputs.items():
             if resource in fluids:
                 # fluids are always quality 0 => only use at quality 0
                 # they do not contribute to quality considerations
                 resources[resource][0] -= recipe_amounts[ri][q] * amount
+                # fluids are not recycled
             else:
                 resources[resource][q] -= recipe_amounts[ri][q] * amount
+                resources[resource][q] += recycle_amounts[ri][q] * amount * recycle_percentage
+                # TODO: add quality of recycled resources
             
         for resource, amount in recipe.outputs.items():
             base_amount = recipe_amounts[ri][q] * amount
             # * prod
             # split with quality
             
-            prod_amount = Int(f"prod_{ri}_q{q}") if recipe.accepts_productivity else 0
-            quality_amount = Int(f"quality_{ri}_q{q}") if accepts_quality else 0
-            s.add(quality_amount >= 0)
-            s.add(prod_amount >= 0)
-            s.add(quality_amount+prod_amount <= machine.module_slots)
-            
-            modules_amounts[ri][q][quality_module_percentage] = quality_amount
-            modules_amounts[ri][q][productivity_module_name] = prod_amount
-            
             # encode cubic constraint via bilinear method => double quadratic constraints
-            base_amount_prod = Real(f"prod_amount_{ri}_q{q}")
+            base_amount_prod = Real(f"prod_amount_{ri}_q{q}_{resource}")
             s.add(base_amount_prod == base_amount * (1 + productivity_module_percentage * prod_amount))
             
             percent_sum = 0
@@ -311,6 +352,8 @@ for ri, recipe in enumerate(recipes):
                     resources[resource][q2] += base_amount_prod * percentage
                     percentage /= 10
             resources[resource][q] += base_amount_prod * (1-percent_sum)
+            # we lose the recycled amount (losses are not affected by quality/prod)
+            resources[resource][q] -= recycle_amounts[ri][q] * amount 
 
 # no resource can be negative
 for resource, quality_amounts in resources.items():
@@ -338,13 +381,17 @@ print(f"Optimization took {t1-t0:.2f} seconds")
 
 
 def get_float(expr):
+    if isinstance(expr, int):
+        return expr
+    if isinstance(expr, float):
+        return expr
     return float(expr.numerator_as_long())/float(expr.denominator_as_long())
 
 if res == sat:
     print("Solution found")
     print()
     m = s.model()
-    print(f"Producing {m.evaluate(goal_resource)} {goal_item} at quality {qualityName(goal_quality, padding=False)}")
+    print(f"Producing {get_float(m.evaluate(goal_resource)):.2f} {goal_item} at quality {qualityName(goal_quality, padding=False)}")
     print(f"Objective ({org_objective}): {get_float(m.evaluate(objective)):.2f}")
     
     print()
@@ -358,23 +405,38 @@ if res == sat:
     print()
     print("Machines:")
     for ri, recipe in enumerate(recipes):
-        print(f"  {recipe.name} crafted in {recipe.machine.name}: ")
+        machine_str = []
         for q in range(max_quality+1):
             if q not in recipe_amounts[ri]:
                 continue
             amount = get_float(m[recipe_amounts[ri][q]])
+            recycle_amount = get_float(m[recycle_amounts[ri][q]])
             if amount > 0:
                 prod_amount = m[modules_amounts[ri][q][productivity_module_name]]
                 quality_amount = m[modules_amounts[ri][q][quality_module_percentage]]
-                print(f"    {qualityName(q)}: {amount:6.2f} ({itemName(productivity_module_name)}: {prod_amount}, {itemName(quality_module_name)}: {quality_amount})")
+                prod_amount = abs(get_float(prod_amount))
+                quality_amount = abs(get_float(quality_amount))
+                s = ""
+                s+=("    ")
+                s+=(f"{qualityName(q)}: {amount:6.2f}")
+                s+=(f" ({itemName(productivity_module_name)}: {prod_amount}, {itemName(quality_module_name)}: {quality_amount})")
+                if recycle_amount > 0:
+                    s+=(f" (recycle: {recycle_amount:6.2f})")
+                machine_str.append(s)
+        if machine_str:
+            print(f"  {recipe.name} crafted in {recipe.machine.name}: ")
+            print("\n".join(machine_str))
             
     print()
     print("Left over resources:")
     for resource, quality_amounts in resources.items():
-        print(f"  {itemName(resource)}: ")
+        resource_str = []
         for quality, amount in sorted(quality_amounts.items(), key=lambda x: x[0]):
             amount = get_float(m.evaluate(amount))
             if amount > 0.001:
-                print(f"    {qualityName(quality)}: {amount:.2f}")
+                resource_str.append(f"    {qualityName(quality)}: {amount:.2f}")
+        if resource_str:
+            print(f"  {itemName(resource)}: ")
+            print("\n".join(resource_str))
 else:
     print("No solution found")
