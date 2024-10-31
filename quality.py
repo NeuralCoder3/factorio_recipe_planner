@@ -20,17 +20,21 @@ objective = "inputs"
 goal_item = "blue_circuit"
 goal_quality = 2
 
-input_items = ["iron_ore_vein", "copper_ore_vein", "coal_vein", "petroleum_gas", "water"]
 rarities = ["normal", "uncommon", "rare", "epic", "legendary"]
 max_quality = 2
 # max_quality = len(rarities)-1
 quality_module_percentage = 0.02 # 2% for quality level 2 module
 productivity_module_percentage = 0.06 # 6% for productivity level 2 module
-recycle_percentage = 0.25
-quality_module_name = "quality"
-productivity_module_name = "productivity"
-allow_recycling = True
 
+item_productivity = {
+    # productivity research (e.g. steel)
+}
+
+# TODO: scaling of input priority => water 0
+input_items = ["iron_ore_vein", "copper_ore_vein", "coal_vein", "petroleum_gas", "water", "calcite"]
+recycle_percentage = 0.25
+quality_module_name = "quality lv 2"
+productivity_module_name = "productivity lv 2"
 
 class Wrapper:
     def __init__(self, obj):
@@ -94,7 +98,7 @@ elif mode == "z3":
     
 elif mode == "gurobi":
     
-    from gurobipy import Model, GRB, quicksum
+    from gurobipy import Model, GRB, quicksum, Var
     
     s = Model()
     s = Wrapper(s)
@@ -137,6 +141,8 @@ elif mode == "gurobi":
         
         
         def evaluate(self, expr):
+            if isinstance(expr, Var):
+                return self.__getitem__(expr)
             return self.access(expr, lambda x: x.getValue())
         
         # make subscripting work
@@ -189,14 +195,18 @@ def qualityName(quality, padding=True):
         return name
     return " " * (max_len - len(name)) + name # + f" ({quality})"
 
-fluids = set(["water", "crude_oil", "heavy_oil", "light_oil", "petroleum_gas", "sulfuric_acid", "lubricant"])
+fluids = set([
+    "water", "crude_oil", "heavy_oil", "light_oil", "petroleum_gas", "sulfuric_acid", "lubricant",
+    "steam", 
+    "molten_iron", "molten_copper", 
+])
 unrecycleable = set(
     # fluids
     list(fluids)+[
         # ambiguous resources (already covered)
         # raw resources
         "iron_ore_vein", "copper_ore_vein", "coal_vein",
-        "iron_ore", "copper_ore", "coal", "stone", "uranium_ore", "raw_fish", "wood", 
+        "iron_ore", "copper_ore", "coal", "stone", "uranium_ore", "raw_fish", "wood", "calcite"
         # other processes
         "uranium_235", "uranium_238", 
         # smelting
@@ -209,7 +219,8 @@ unrecycleable = set(
 miner = Machine(
     "Miner",
     module_slots=3,
-    speed=0.5
+    speed=0.5,
+    productivity=0.3
 )
 
 smelter = Machine(
@@ -236,13 +247,17 @@ recycler = Machine(
     speed=0.5
 )
 
-item_productivity = {
-    # miner productivity research
-    "iron_ore": 0.3,
-    "copper_ore": 0.3,
-    "coal": 0.3,
-    # productivity research (e.g. steel)
-}
+foundry = Machine(
+    "Foundry",
+    module_slots=4,
+    speed=4,
+    productivity=0.5
+)
+
+exclude_machines = [
+    # foundry
+]
+allow_recycling = recycler not in exclude_machines
 
 recipes = [
     Recipe(
@@ -329,7 +344,44 @@ recipes = [
         outputs={"blue_circuit": 1},
         crafting_time=10
     ),
+    Recipe(
+        name="Melt Iron",
+        machine=foundry,
+        inputs={"iron_ore": 50, "calcite": 1},
+        outputs={"molten_iron": 500},
+        crafting_time=32
+    ),
+    Recipe(
+        name="Cast Iron",
+        machine=foundry,
+        inputs={"molten_iron": 20},
+        outputs={"iron_plate": 2},
+        crafting_time=3.2
+    ),
+    Recipe(
+        name="Melt Copper",
+        machine=foundry,
+        inputs={"copper_ore": 50, "calcite": 1},
+        outputs={"molten_copper": 500},
+        crafting_time=32
+    ),
+    Recipe(
+        name="Cast Copper",
+        machine=foundry,
+        inputs={"molten_copper": 20},
+        outputs={"copper_plate": 2},
+        crafting_time=3.2
+    ),
+    Recipe(
+        name="Cast Copper Wire",
+        machine=foundry,
+        inputs={"molten_copper": 5},
+        outputs={"copper_wire": 2},
+        crafting_time=1
+    ),
 ]
+
+recipes = [r for r in recipes if r.machine not in exclude_machines]
 
 recycle_times = {
     # https://wiki.factorio.com/Recycler
@@ -384,10 +436,11 @@ all_recipes = recipes + recycle_recipes
     
 for ri, recipe in enumerate(all_recipes):
     machine = recipe.machine
-    accepts_quality = not(all(out in fluids for out in recipe.outputs))
+    accepts_quality = not(all(out in fluids for out in recipe.outputs)) and not(all(inp in fluids for inp in recipe.inputs))
     # if output can not have quality => skip all stages
     quality_range = range(max_quality+1) if accepts_quality else [0]
     # here if recipe would not accept quality modules (can not happen except for testing)
+    machine_productivity = machine.productivity
     for q in quality_range:
         recipe_amounts[ri][q] = Real(f"recipe_{ri}_q{q}")
         s.add(recipe_amounts[ri][q] >= 0)
@@ -415,10 +468,12 @@ for ri, recipe in enumerate(all_recipes):
             # * prod
             # split with quality
             
+            # TODO: force fluid quality
+            
             # encode cubic constraint via bilinear method => double quadratic constraints
             base_amount_prod = Real(f"prod_amount_{ri}_q{q}_{resource}")
             item_prod = item_productivity.get(resource, 0)
-            s.add(base_amount_prod == base_amount * (1 + productivity_module_percentage * prod_amount + item_prod))
+            s.add(base_amount_prod == base_amount * (1 + productivity_module_percentage * prod_amount + item_prod + machine_productivity))
             
             percent_sum = 0
             if accepts_quality:
@@ -536,7 +591,7 @@ if satisfied:
             print("\n".join(machine_str))
             
     print()
-    print("Left over resources:")
+    print("Leftover resources:")
     for resource, quality_amounts in resources.items():
         resource_str = []
         for quality, amount in sorted(quality_amounts.items(), key=lambda x: x[0]):
