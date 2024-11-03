@@ -46,6 +46,7 @@ prod_modules_used = Real("prod_modules_used")
 beacons_used = Real("beacons_used")
 
 
+tstart = time.time()
 for ri, recipe in enumerate(all_recipes):
     machine = recipe.machine
     accepts_quality = not(all(out in fluids for out in recipe.outputs)) and not(all(inp in fluids for inp in recipe.inputs)) and recipe.accepts_quality
@@ -164,10 +165,12 @@ else:
     raise ValueError(f"Unknown objective {objective}")
 s.minimize(objective)
 # for gurobi to print the resulting formula
-s.update()
+# s.update()
 #print(s.display())
-s.write('tmp.lp')
+# s.write('tmp.lp')
 
+t0 = time.time()
+print(f"Building solver problem took {t0-tstart:.2f} seconds")
 print("Solving...")
 t0 = time.time()
 res = s.check()
