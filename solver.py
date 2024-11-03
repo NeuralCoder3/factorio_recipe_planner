@@ -1,8 +1,8 @@
 # mode = "z3"
 # mode = "mip"
-mode = "gurobi"
-mode = "ortools"
-# mode = "minizinc"
+# mode = "gurobi"
+# mode = "ortools"
+mode = "pulp"
 
 eps = 1e-6
 
@@ -157,6 +157,63 @@ elif mode == "ortools":
         # make subscripting work
         def __getitem__(self, key):
             return self.access(key, lambda x: x.solution_value())
+        
+    s.model = lambda: Model(s)
+    
+elif mode == "minizinc":
+    
+    import minizinc
+    
+    s = minizinc.Model()
+    
+    def Real(name):
+        s.add_string(f"var float: {name};")
+        return name
+    
+    raise NotImplementedError("Not implemented yet")
+
+elif mode == "pulp":
+    
+    from pulp import LpProblem, LpVariable, LpMinimize, LpStatus, value
+    
+    s = LpProblem("factorio", LpMinimize)
+    
+    def Real(name):
+        return LpVariable(name, 0)
+    
+    def add_constraint(expr):
+        global s
+        s += expr
+        
+    def minimize_objective(obj):
+        global s
+        s += obj
+        
+    s.add = add_constraint
+    s.minimize = minimize_objective
+    s.check = lambda: LpStatus[s.solve()]
+    
+    sat = "Optimal"
+    
+    class Model:
+        def __init__(self, s):
+            pass
+        
+        def access(self, e, f):
+            if isinstance(e, int):
+                return e
+            value = f(e)
+            return value
+        
+        
+        def evaluate(self, expr):
+            # if isinstance(expr, pywraplp.Variable):
+            #     return self.__getitem__(expr)
+            return self.access(expr, value)
+        
+        # make subscripting work
+        def __getitem__(self, key):
+            return self.access(key, value)
         
     s.model = lambda: Model(s)
     
