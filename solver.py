@@ -1,6 +1,8 @@
 # mode = "z3"
 # mode = "mip"
 mode = "gurobi"
+mode = "ortools"
+# mode = "minizinc"
 
 eps = 1e-6
 
@@ -123,6 +125,40 @@ elif mode == "gurobi":
     s.model = lambda: Model(s)
     
     s.Params.TimeLimit = 10 # in seconds
+    
+elif mode == "ortools":
+    from ortools.linear_solver import pywraplp 
+    s = pywraplp.Solver.CreateSolver("GLOP")
+    
+    def Real(name):
+        return s.NumVar(0, s.infinity(), name)
+    
+    s.add = s.Add
+    s.minimize = s.Minimize
+    s.check = lambda: s.Solve() 
+    sat = pywraplp.Solver.OPTIMAL
+    
+    class Model:
+        def __init__(self, s):
+            pass
+        
+        def access(self, e, f):
+            if isinstance(e, int):
+                return e
+            value = f(e)
+            return value
+        
+        
+        def evaluate(self, expr):
+            if isinstance(expr, pywraplp.Variable):
+                return self.__getitem__(expr)
+            return self.access(expr, lambda x: x.solution_value())
+        
+        # make subscripting work
+        def __getitem__(self, key):
+            return self.access(key, lambda x: x.solution_value())
+        
+    s.model = lambda: Model(s)
     
 else:
     raise ValueError(f"Unknown mode {mode}")
