@@ -1,5 +1,6 @@
 from common import *
 from solver import *
+import time
 
 def deepsum(d):
     if isinstance(d, dict):
@@ -47,14 +48,12 @@ beacons_used = Real("beacons_used")
 
 
 for ri, recipe in enumerate(all_recipes):
-    machine = recipe.machine
     accepts_quality = not(all(out in fluids for out in recipe.outputs)) and not(all(inp in fluids for inp in recipe.inputs)) and recipe.accepts_quality
     # if output can not have quality => skip all stages
     quality_range = range(max_quality+1) if accepts_quality else [0]
     if recipe.forced_quality is not None:
         quality_range = [recipe.forced_quality]
-    # here if recipe would not accept quality modules (can not happen except for testing)
-    machine_productivity = machine.productivity
+
     for planet in recipe.allowed_planets:
         if planet not in recipe.machine.allowed_planets:
             continue 
@@ -66,11 +65,11 @@ for ri, recipe in enumerate(all_recipes):
         for q in quality_range:
             max_machine_quality = max_quality if objective == "constrained" else 0
             for machine_q in range(max_machine_quality+1):
-                max_quality_modules = machine.module_slots if accepts_quality and recipe.accepts_quality_module else 0
+                max_quality_modules = recipe.machine.module_slots if accepts_quality and recipe.accepts_quality_module else 0
                 for num_quality_modules in range(max_quality_modules+1):
-                    max_prod_modules = machine.module_slots - num_quality_modules if recipe.accepts_productivity else 0
+                    max_prod_modules = recipe.machine.module_slots - num_quality_modules if recipe.accepts_productivity else 0
                     for num_productivity_modules in range(max_prod_modules+1):
-                        max_speed_modules = machine.module_slots - num_quality_modules - num_productivity_modules #if objective == "constrained" else 0
+                        max_speed_modules = recipe.machine.module_slots - num_quality_modules - num_productivity_modules #if objective == "constrained" else 0
                         for num_speed_modules in range(max_speed_modules+1):
                             max_beacons = max_beacons_per_machine #if objective == "constrained" else 0
                             for num_beacons in range(max_beacons+1):
@@ -78,13 +77,27 @@ for ri, recipe in enumerate(all_recipes):
                                 recipe_amounts[planet][ri][q][machine_q][num_quality_modules][num_productivity_modules][num_speed_modules][num_beacons] = recipe_amount
                                 s.add(recipe_amount >= 0)
 
-                                machine_count = recipe_amount * recipe.crafting_time / recipe.machine.qspeed[machine_q]
                                 speed_bonus = 1
-                                speed_bonus += speed_module_percentage * (num_speed_modules + math.sqrt(num_beacons) * beacon_efficiency * 2)
-                                speed_bonus += quality_module_speed_percentage * num_quality_modules
-                                speed_bonus += productivity_module_speed_percentage * num_productivity_modules
-                                machine_count /= speed_bonus
+                                speed_bonus += speed_module.speed_bonus * (num_speed_modules + math.sqrt(num_beacons) * beacon.distribution_efficiency * 2)
+                                speed_bonus += quality_module.speed_bonus * num_quality_modules
+                                speed_bonus += productivity_module.speed_bonus * num_productivity_modules
+                                speed_bonus = max(0.2, speed_bonus)
 
+                                productivity_bonus = 1
+                                productivity_bonus += recipe.productivity
+                                productivity_bonus += recipe.machine.productivity
+                                productivity_bonus += productivity_module.productivity_bonus * num_productivity_modules
+                                productivity_bonus += quality_module.productivity_bonus * num_quality_modules
+                                productivity_bonus += speed_module.productivity_bonus * num_speed_modules
+                                productivity_bonus = max(1.0, productivity_bonus)
+
+                                quality_bonus = 0
+                                quality_bonus += quality_module.quality_bonus * num_quality_modules
+                                quality_bonus += productivity_module.quality_bonus * num_productivity_modules
+                                quality_bonus += speed_module.quality_bonus * (num_speed_modules + math.sqrt(num_beacons) * beacon.distribution_efficiency * 2)
+                                quality_bonus = max(0, quality_bonus)
+
+                                machine_count = recipe_amount * recipe.crafting_time / recipe.machine.qspeed[machine_q] / speed_bonus
                                 machines[recipe.machine.name][machine_q] += machine_count
 
                                 speed_modules_used += machine_count * (num_speed_modules + num_beacons * beacon_sharedness * 2)
@@ -95,37 +108,24 @@ for ri, recipe in enumerate(all_recipes):
                                 input_planet = recipe.forced_input_planet if recipe.forced_input_planet is not None else planet
                                 output_planet = recipe.forced_output_planet if recipe.forced_output_planet is not None else planet
 
-                                #if "rocket_part" in recipe.outputs:
-                                #    print(f"Recipe {recipe.name} on planet {planet} with quality {q} and machine quality {machine_q} and {num_quality_modules} quality modules and {num_productivity_modules} productivity modules and {num_speed_modules} speed modules and {num_beacons} beacons")
-                                #    print(f"In: {input_planet} Out: {output_planet}")
-                                #    print()
-
-
                                 for resource, resource_amount in recipe.inputs.items():
                                     input_quality = recipe.forced_input_quality.get(resource, q) if resource not in fluids else 0
-                                    assert resource_amount >= 0
                                     resources[input_planet][resource][input_quality] -= recipe_amount * resource_amount
                                     
                                 for resource, resource_amount in recipe.outputs.items():
-                                    productivity_bonus = (1 + productivity_module_percentage * num_productivity_modules + recipe.productivity + machine_productivity)
-                                    assert productivity_bonus >= 0
                                     base_amount = resource_amount * productivity_bonus
-                                    
-                                    # TODO: force fluid quality
                                     
                                     percent_sum = 0
                                     output_quality = recipe.forced_output_quality.get(resource, q) if resource not in fluids else 0
                                     is_forced_quality = resource in recipe.forced_output_quality or resource in fluids
                                     if accepts_quality and not is_forced_quality:
                                         # TODO: better sum directly instead of iterative
-                                        percentage = max(0, num_quality_modules * quality_module_percentage + speed_module_quality_percentage * num_speed_modules)
+                                        percentage = quality_bonus
                                         for q2 in range(q+1,max_quality+1):
                                             actual_percentage = percentage * (0.9 if q2 != max_quality else 1)
                                             percent_sum += actual_percentage
-                                            assert base_amount * actual_percentage >= 0
                                             resources[output_planet][resource][q2] += recipe_amount * (base_amount * actual_percentage)
                                             percentage /= 10
-                                    assert base_amount * (1-percent_sum) >= 0
                                     resources[output_planet][resource][output_quality] += recipe_amount * (base_amount * (1-percent_sum))
 
 # no resource can be negative
@@ -244,17 +244,24 @@ if satisfied:
                                     recipe_amount = get_float(m[recipe_amounts[planet][ri][q][machine_q][num_quality_modules][num_productivity_modules][num_speed_modules][num_beacons]])
                                     if abs(recipe_amount) > eps:
                                         speed_bonus = 1
-                                        speed_bonus += speed_module_percentage * (num_speed_modules + math.sqrt(num_beacons) * beacon_efficiency * 2)
-                                        speed_bonus += quality_module_speed_percentage * num_quality_modules
-                                        speed_bonus += productivity_module_speed_percentage * num_productivity_modules
+                                        speed_bonus += speed_module.speed_bonus * (num_speed_modules + math.sqrt(num_beacons) * beacon.distribution_efficiency * 2)
+                                        speed_bonus += quality_module.speed_bonus * num_quality_modules
+                                        speed_bonus += productivity_module.speed_bonus * num_productivity_modules
+                                        speed_bonus = max(0.2, speed_bonus)
 
-                                        productivity_bonus = (1 + productivity_module_percentage * num_productivity_modules + recipe.productivity + machine_productivity)
+                                        productivity_bonus = 1
+                                        productivity_bonus += recipe.productivity
+                                        productivity_bonus += recipe.machine.productivity
+                                        productivity_bonus += productivity_module.productivity_bonus * num_productivity_modules
+                                        productivity_bonus += quality_module.productivity_bonus * num_quality_modules
+                                        productivity_bonus += speed_module.productivity_bonus * num_speed_modules
+                                        productivity_bonus = max(1.0, productivity_bonus)
 
                                         machine_count = recipe_amount * recipe.crafting_time / recipe.machine.speed / speed_bonus
                                         s = ""
                                         s+=("      ")
                                         s+=(f"{qualityName(q)}: {recipe_amount:6.2f}")
-                                        s+=(f" ({itemName(productivity_module_name)}: {num_productivity_modules}, {itemName(quality_module_name)}: {num_quality_modules}, {itemName(speed_module_name)}: {num_speed_modules}, {itemName(beacon_name)}: {num_beacons})")
+                                        s+=(f" ({itemName(productivity_module.name)}: {num_productivity_modules}, {itemName(quality_module.name)}: {num_quality_modules}, {itemName(speed_module.name)}: {num_speed_modules}, {itemName(beacon.name)}: {num_beacons})")
                                         s+=("  => ")
                                         s+=(f"{math.ceil(machine_count):>4} {recipe.machine.name:}: ")
                                         s+=" + ".join( [f"{recipe_amount*resource_amount*speed_bonus:.2f}/s {itemName(resource)}" for resource, resource_amount in recipe.inputs.items()])
@@ -280,10 +287,10 @@ if satisfied:
 
     print()
     print(f"Total modules used ({get_float(m.evaluate(deepsum(speed_modules_used+quality_modules_used+prod_modules_used))):0.2f}):")
-    print(f"  {itemName(speed_module_name)}: {get_float(m.evaluate(speed_modules_used)):.2f}")
-    print(f"  {itemName(quality_module_name)}: {get_float(m.evaluate(quality_modules_used)):.2f}")
-    print(f"  {itemName(productivity_module_name)}: {get_float(m.evaluate(prod_modules_used)):.2f}")
-    print(f"  {beacon_name}: {get_float(m.evaluate(beacons_used)):.2f}")
+    print(f"  {itemName(speed_module.name)}: {get_float(m.evaluate(speed_modules_used)):.2f}")
+    print(f"  {itemName(quality_module.name)}: {get_float(m.evaluate(quality_modules_used)):.2f}")
+    print(f"  {itemName(productivity_module.name)}: {get_float(m.evaluate(prod_modules_used)):.2f}")
+    print(f"  {beacon.name}: {get_float(m.evaluate(beacons_used)):.2f}")
 
     print()
     print(f"Leftover resources ({get_float(m.evaluate(deepsum(resources))):0.2f}):")
