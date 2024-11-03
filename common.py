@@ -151,7 +151,7 @@ speed_modules = [[]] + [
 productivity_modules = [[]] + [
     [
         Module(
-            name=f"Speed Module {level+1} ({qualityName(q, padding=False)})",
+            name=f"Productivity Module {level+1} ({qualityName(q, padding=False)})",
             productivity_bonus=math.floor([0.04, 0.06, 0.1][level] * [1, 1.3, 1.6, 1.9, 2.5][q] * 100) / 100,
             speed_bonus=[-0.05, -0.10, -0.15][level],
         ) for q in range(len(rarities))
