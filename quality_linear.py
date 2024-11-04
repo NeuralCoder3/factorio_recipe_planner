@@ -111,10 +111,13 @@ for ri, recipe in enumerate(all_recipes):
 
                                 for resource, resource_amount in recipe.inputs.items():
                                     input_quality = recipe.forced_input_quality.get(resource, q) if resource not in fluids else 0
-                                    resources[input_planet][resource][input_quality] -= recipe_amount * resource_amount
+                                    resources[input_planet][resource][input_quality] -= recipe_amount * speed_bonus * resource_amount
                                     
                                 for resource, resource_amount in recipe.outputs.items():
-                                    base_amount = resource_amount * productivity_bonus
+                                    in_amount = recipe.inputs.get(resource, 0)
+                                    base_amount = max(resource_amount, in_amount + (resource_amount - in_amount) * productivity_bonus)
+                                    base_amount *= recipe_amount * speed_bonus
+
                                     
                                     percent_sum = 0
                                     output_quality = recipe.forced_output_quality.get(resource, q) if resource not in fluids else 0
@@ -125,9 +128,9 @@ for ri, recipe in enumerate(all_recipes):
                                         for q2 in range(q+1,max_quality+1):
                                             actual_percentage = percentage * (0.9 if q2 != max_quality else 1)
                                             percent_sum += actual_percentage
-                                            resources[output_planet][resource][q2] += recipe_amount * (base_amount * actual_percentage)
+                                            resources[output_planet][resource][q2] += base_amount * actual_percentage
                                             percentage /= 10
-                                    resources[output_planet][resource][output_quality] += recipe_amount * (base_amount * (1-percent_sum))
+                                    resources[output_planet][resource][output_quality] += base_amount * (1-percent_sum)
 
 # no resource can be negative
 for planet in all_planets + ["space"]:
