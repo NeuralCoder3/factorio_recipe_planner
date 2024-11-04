@@ -371,6 +371,7 @@ def define_recipes():
                 "copper_cable": 0.03,
             },
             productivity=item_productivity["scrap"],
+            accepts_productivity=False,
             crafting_time=0.2
         ),
         #endregion
@@ -745,6 +746,7 @@ def define_recipes():
                 machine=machine,
                 inputs={"copper_cable": 3, "iron_plate": 1},
                 outputs={"electronic_circuit": 1},
+                accepts_productivity=False,
                 crafting_time=0.5
             ),
             Recipe(
@@ -767,6 +769,7 @@ def define_recipes():
                 machine=machine,
                 inputs={"advanced_circuit": 5, "electronic_circuit": 5},
                 outputs={"quality_module": 1},
+                accepts_productivity=False,
                 crafting_time=15
             ),
             Recipe(
@@ -774,6 +777,7 @@ def define_recipes():
                 machine=machine,
                 inputs={"advanced_circuit": 5, "processing_unit": 5, "quality_module": 4},
                 outputs={"quality_module_2": 1},
+                accepts_productivity=False,
                 crafting_time=30
             ),
             Recipe(
@@ -781,6 +785,7 @@ def define_recipes():
                 machine=machine,
                 inputs={"advanced_circuit": 5, "processing_unit": 5, "quality_module_2": 4, "superconductor": 1},
                 outputs={"quality_module_3": 1},
+                accepts_productivity=False,
                 crafting_time=60
             ),
         ]
