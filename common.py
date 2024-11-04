@@ -399,6 +399,13 @@ def define_recipes():
             productivity=item_productivity["steel_plate"],
             crafting_time=16
         ),
+        Recipe(
+            name="Stone Smelting",
+            machine=smelter,
+            inputs={"stone": 2},
+            outputs={"stone_brick": 1},
+            crafting_time=3.2
+        ),
         #endregion
 
         #region foundry recipes
@@ -496,18 +503,20 @@ def define_recipes():
             crafting_time=10
         ),
         Recipe(
-            name="Holmium Plate",
-            machine=foundry,
-            inputs={"holmium_solution": 20},
-            outputs={"tungsten_plate": 1},
-            crafting_time=1
-        ),
-        Recipe(
             name="Metallurgic Science Pack",
             machine=foundry,
             inputs={"tungsten_carbide": 3, "tungsten_plate": 2, "molten_copper": 200},
             outputs={"metallurgic_science_pack" : 1},
             crafting_time=1,
+            allowed_planets=["vulcanus"]
+        ),
+        Recipe(
+            name="Big Mining Drill",
+            machine=foundry,
+            inputs={"advanced_circuit": 10, "electric_engine_unit": 10, "tungsten_carbide": 20, "electric_mining_drill": 1, "molten_iron": 200},
+            outputs={"big_mining_drill": 1},
+            accepts_productivity=False,
+            crafting_time=30,
             allowed_planets=["vulcanus"]
         ),
         #endregion
@@ -684,6 +693,132 @@ def define_recipes():
             productivity=item_productivity["rocket_fuel"],
             crafting_time=15
         ),
+        Recipe(
+            name="Concrete",
+            machine=assembler,
+            inputs={"stone": 5, "iron_ore": 1, "water": 100},
+            outputs={"concrete": 10},
+            accepts_productivity=False,
+            crafting_time=10
+        ),
+        Recipe(
+            name="Refined Concrete",
+            machine=assembler,
+            inputs={"steel_plate": 1, "iron_stick": 8, "concrete": 20, "water": 100},
+            outputs={"refined_concrete": 15},
+            accepts_productivity=False,
+            crafting_time=10
+        ),
+        Recipe(
+            name="Assembling machine 1",
+            machine=assembler,
+            inputs={"iron_plate": 9, "iron_gear_wheel": 5, "electronic_circuit": 3},
+            outputs={"assembling_machine_1": 1},
+            accepts_productivity=False,
+            crafting_time=0.5
+        ),
+        Recipe(
+            name="Assembling machine 2",
+            machine=assembler,
+            inputs={"assembling_machine_1": 1, "steel_plate": 2, "iron_gear_wheel": 5, "electronic_circuit": 3},
+            outputs={"assembling_machine_2": 1},
+            accepts_productivity=False,
+            crafting_time=0.5
+        ),
+        Recipe(
+            name="Assembling machine 3",
+            machine=assembler,
+            inputs={"assembling_machine_2": 2, "speed_module": 4},
+            outputs={"assembling_machine_3": 1},
+            accepts_productivity=False,
+            crafting_time=0.5
+        ),
+        Recipe(
+            name="Electric Furnace",
+            machine=assembler,
+            inputs={"steel_plate": 10, "advanced_circuit": 5, "stone_brick": 10},
+            outputs={"electric_furnace": 1},
+            accepts_productivity=False,
+            crafting_time=0.5
+        ),
+        Recipe(
+            name="Electric Mining Drill",
+            machine=assembler,
+            inputs={"iron_plate": 10, "iron_gear_wheel": 5, "electronic_circuit": 3},
+            outputs={"electric_mining_drill": 1},
+            accepts_productivity=False,
+            crafting_time=0.5
+        ),
+        Recipe(
+            name="Electric Engine Unit",
+            machine=assembler,
+            inputs={"engine_unit": 1, "electronic_circuit": 2, "lubricant": 15},
+            outputs={"electric_engine_unit": 1},
+            crafting_time=10
+        ),
+        Recipe(
+            name="Engine Unit",
+            machine=assembler,
+            inputs={"steel_plate": 1, "iron_gear_wheel": 1, "pipe": 2},
+            outputs={"engine_unit": 1},
+            crafting_time=10
+        ),
+        Recipe(
+            name="Oil Refinery",
+            machine=assembler,
+            inputs={"steel_plate": 15, "iron_gear_wheel": 10, "electronic_circuit": 10, "pipe": 10, "stone_brick": 10},
+            outputs={"oil_refinery": 1},
+            accepts_productivity=False,
+            crafting_time=8
+        ),
+        Recipe(
+            name="Chemical Plant",
+            machine=assembler,
+            inputs={"steel_plate": 5, "iron_gear_wheel": 5, "electronic_circuit": 5, "pipe": 5},
+            outputs={"chemical_plant": 1},
+            accepts_productivity=False,
+            crafting_time=5
+        ),
+        Recipe(
+            name="Recycler",
+            machine=assembler,
+            inputs={"steel_plate": 20, "iron_gear_wheel": 40, "processing_unit": 6, "concrete": 20},
+            outputs={"recycler": 1},
+            accepts_productivity=False,
+            crafting_time=5,
+            allowed_planets=["fulgora"]
+        ),
+        Recipe(
+            name="Pipe",
+            machine=assembler,
+            inputs={"iron_plate": 1},
+            outputs={"pipe": 1},
+            accepts_productivity=False,
+            crafting_time=0.5
+        ),
+        Recipe(
+            name="Tungsten Carbide",
+            machine=assembler,
+            inputs={"carbon": 1, "tungsten_ore": 2, "sulfuric_acid": 10},
+            outputs={"tungsten_carbide": 1},
+            crafting_time=1
+        ),
+        Recipe(
+            name="Rocket Silo",
+            machine=assembler,
+            inputs={"steel_plate": 1000, "processing_unit": 200, "electric_engine_unit": 200, "pipe": 100, "concrete": 1000},
+            outputs={"rocket_silo": 1},
+            accepts_productivity=False,
+            crafting_time=30,
+            allowed_planets=all_planets
+        ),
+        Recipe(
+            name="Iron Stick",
+            machine=assembler,
+            inputs={"iron_plate": 1},
+            outputs={"iron_stick": 2},
+            crafting_time=0.5
+        ),
         #endregion
 
         #region electromagnetic plant recipes
@@ -788,6 +923,79 @@ def define_recipes():
                 accepts_productivity=False,
                 crafting_time=60
             ),
+            Recipe(
+                name="Speed Module",
+                machine=machine,
+                inputs={"advanced_circuit": 5, "electronic_circuit": 5},
+                outputs={"speed_module": 1},
+                accepts_productivity=False,
+                crafting_time=15
+            ),
+            Recipe(
+                name="Speed Module 2",
+                machine=machine,
+                inputs={"advanced_circuit": 5, "processing_unit": 5, "speed_module": 4},
+                outputs={"speed_module_2": 1},
+                accepts_productivity=False,
+                crafting_time=30
+            ),
+            Recipe(
+                name="Speed Module 3",
+                machine=machine,
+                inputs={"advanced_circuit": 5, "processing_unit": 5, "speed_module_2": 4, "tungsten_carbide": 1},
+                outputs={"speed_module_3": 1},
+                accepts_productivity=False,
+                crafting_time=60
+            ),
+            Recipe(
+                name="Productivity Module",
+                machine=machine,
+                inputs={"advanced_circuit": 5, "electronic_circuit": 5},
+                outputs={"productivity_module": 1},
+                accepts_productivity=False,
+                crafting_time=15
+            ),
+            Recipe(
+                name="Productivity Module 2",
+                machine=machine,
+                inputs={"advanced_circuit": 5, "processing_unit": 5, "productivity_module": 4},
+                outputs={"productivity_module_2": 1},
+                accepts_productivity=False,
+                crafting_time=30
+            ),
+            Recipe(
+                name="Productivity Module 3",
+                machine=machine,
+                inputs={"advanced_circuit": 5, "processing_unit": 5, "productivity_module_2": 4, "biter_egg": 1},
+                outputs={"productivity_module_3": 1},
+                accepts_productivity=False,
+                crafting_time=60
+            ),
+            Recipe(
+                name="Beacon",
+                machine=machine,
+                inputs={"steel_plate": 10, "copper_cable": 10, "electronic_circuit": 20, "advanced_circuit": 20},
+                outputs={"beacon": 1},
+                accepts_productivity=False,
+                crafting_time=15
+            ),
+            Recipe(
+                name="Electromagnetic Plant",
+                machine=machine,
+                inputs={"steel_plate": 50, "processing_unit": 50, "holmium_plate": 150, "refined_concrete": 50},
+                outputs={"electromagnetic_plant": 1},
+                accepts_productivity=False,
+                crafting_time=10,
+                allowed_planets=["fulgora"]
+            ),
+            Recipe(
+                name="Accumulator",
+                machine=machine,
+                inputs={"iron_plate": 2, "battery": 5},
+                outputs={"accumulator": 1},
+                accepts_productivity=False,
+                crafting_time=10
+            ),
         ]
     #endregion
 
@@ -801,6 +1009,15 @@ def define_recipes():
                 outputs={"holmium_plate": 1},
                 crafting_time=1
             ),
+            Recipe(
+                name="Foundry",
+                machine=machine,
+                inputs={"steel_plate": 50, "electronic_circuit": 30, "tungsten_carbide": 50, "refined_concrete": 20, "lubricant": 20},
+                outputs={"foundry": 1},
+                accepts_productivity=False,
+                crafting_time=10,
+                allowed_planets=["vulcanus"]
+            )
         ]
     #endregion
 
