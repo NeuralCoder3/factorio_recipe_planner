@@ -933,8 +933,8 @@ reduce_space_travel = True
 
 
 # only needed for constrained mode
-available_machines = defaultdict(lambda: [1e5, 0, 0, 0, 0])
-available_machines.update({
+available_machines = defaultdict(lambda: defaultdict(lambda: [1e5, 0, 0, 0, 0]))
+available_machines['nauvis'].update({
     "Miner": [1e10, 0, 0, 0, 0],
     "Smelter": [330, 735, 142, 0, 0],
     "Assembler": [340, 175, 74, 0, 0],
@@ -944,16 +944,16 @@ available_machines.update({
     "Foundry": [200, 0, 0, 0, 0],
     "Electromagnetic Plant": [10, 5, 0, 0, 0],
     "Rocket Silo": [100, 0, 0, 0, 0],
-
-    #"Rocket": [1e5, 0, 0, 0, 0],
-    #"Drop Pod": [1e5, 0, 0, 0, 0],
-    #"Dummy Converter": [1e5, 0, 0, 0, 0],
 })
 
-available_beacons = 50
-available_speed_modules = 350
-available_quality_modules = 1300
-available_prod_modules = 1000
+available_beacons = defaultdict(lambda: 0)
+available_speed_modules = defaultdict(lambda: 0)
+available_quality_modules = defaultdict(lambda: 0)
+available_prod_modules = defaultdict(lambda: 0)
+available_beacons['nauvis'] = 50
+available_speed_modules['nauvis'] = 350
+available_quality_modules['nauvis'] = 1300
+available_prod_modules['nauvis'] = 1000
 
 science_to_consider = [
     "automation_science",

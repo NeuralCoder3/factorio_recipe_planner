@@ -20,8 +20,8 @@ for planet, planet_resources in inputs_per_planet.items():
         scaled_inputs[planet][resource][0] = v * scaling
         resources[planet][resource][0] = v
 
-# map from machine -> quality -> amount
-machines = defaultdict(lambda: defaultdict(lambda: 0))
+# map from planet -> machine -> quality -> amount
+machines = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: 0)))
 
 # planet -> recipe -> recipe quality -> machine quality -> #quality_modules -> #prod_modules -> #speed_modules -> #speed_beacons -> amount
 recipe_amounts = \
@@ -41,10 +41,11 @@ recipe_amounts = \
         )
     )
 
-speed_modules_used = Real("speed_modules_used")
-quality_modules_used = Real("quality_modules_used")
-prod_modules_used = Real("prod_modules_used")
-beacons_used = Real("beacons_used")
+# each is planet -> count
+speed_modules_used = defaultdict(lambda: 0)
+quality_modules_used = defaultdict(lambda: 0)
+prod_modules_used = defaultdict(lambda: 0)
+beacons_used = defaultdict(lambda: 0)
 
 
 tstart = time.time()
@@ -99,12 +100,12 @@ for ri, recipe in enumerate(all_recipes):
                                 quality_bonus = max(0, quality_bonus)
 
                                 machine_count = recipe_amount * recipe.crafting_time / recipe.machine.qspeed[machine_q] / speed_bonus
-                                machines[recipe.machine.name][machine_q] += machine_count
+                                machines[planet][recipe.machine.name][machine_q] += machine_count
 
-                                speed_modules_used += machine_count * (num_speed_modules + num_beacons * beacon_sharedness * 2)
-                                quality_modules_used += machine_count * num_quality_modules
-                                prod_modules_used += machine_count * num_productivity_modules
-                                beacons_used += machine_count * num_beacons * beacon_sharedness
+                                speed_modules_used[planet] += machine_count * (num_speed_modules + num_beacons * beacon_sharedness * 2)
+                                quality_modules_used[planet] += machine_count * num_quality_modules
+                                prod_modules_used[planet] += machine_count * num_productivity_modules
+                                beacons_used[planet] += machine_count * num_beacons * beacon_sharedness
                                 
                                 input_planet = recipe.forced_input_planet if recipe.forced_input_planet is not None else planet
                                 output_planet = recipe.forced_output_planet if recipe.forced_output_planet is not None else planet
@@ -145,8 +146,8 @@ else:
 
 input_cost = deepsum(scaled_inputs)
 overhead_cost = deepsum(resources)
-machine_cost = deepsum(machines) + beacons_used + speed_modules_used + quality_modules_used + prod_modules_used
-space_travel_cost = machines["Rocket"][0]
+machine_cost = deepsum(machines) + deepsum(beacons_used) + deepsum(speed_modules_used) + deepsum(quality_modules_used) + deepsum(prod_modules_used)
+space_travel_cost = sum(machines[planet]["Rocket"][0] for planet in all_planets)
 
 org_objective =  objective
 if objective == "inputs":
@@ -157,13 +158,15 @@ elif objective == "overhead":
     s.add(overhead_cost >= goal_amount)
 elif objective == "constrained":
     objective = -goal_resource + machine_cost / 1e6
-    s.add(speed_modules_used <= available_speed_modules)
-    s.add(quality_modules_used <= available_quality_modules)
-    s.add(prod_modules_used <= available_prod_modules)
-    s.add(beacons_used <= available_beacons)
-    for machine, quality_amounts in machines.items():
-        for quality, amount in quality_amounts.items():
-            s.add(amount <= available_machines[machine][quality])
+    for planit in all_planets + ["space"]:
+        s.add(speed_modules_used[planet] <= available_speed_modules[planet])
+        s.add(quality_modules_used[planet] <= available_quality_modules[planet])
+        s.add(prod_modules_used[planet] <= available_prod_modules[planet])
+        s.add(beacons_used[planet] <= available_beacons[planet])
+    for planet, planet_machines in machines.items():
+        for machine, quality_amounts in planet_machines.items():
+            for quality, amount in quality_amounts.items():
+                s.add(amount <= available_machines[planet][machine][quality])
 else:
     raise ValueError(f"Unknown objective {objective}")
 s.minimize(objective)
@@ -281,22 +284,31 @@ if satisfied:
             
     print()
     print(f"Total machines used ({get_float(m.evaluate(deepsum(machines))):.2f}):")
-    for machine, quality_amounts in machines.items():
-        machine_str = []
-        for quality, amount in sorted(quality_amounts.items(), key=lambda x: x[0]):
-            amount = get_float(m.evaluate(amount))
-            if amount > eps:
-                machine_str.append(f"    {qualityName(quality)}: {amount:.2f}")
-        if machine_str:
-            print(f"  {machine}: ")
-            print("\n".join(machine_str))
+    for planet, planet_machines in machines.items():
+        planet_str = []
+        for machine, quality_amounts in planet_machines.items():
+            machine_str = []
+            for quality, amount in sorted(quality_amounts.items(), key=lambda x: x[0]):
+                amount = get_float(m.evaluate(amount))
+                if amount > eps:
+                    machine_str.append(f"    {qualityName(quality)}: {amount:.2f}")
+            if machine_str:
+                planet_str.append(f"    {machine}: ")
+                planet_str += machine_str
+        if planet_str:
+            print(f"  {planetName(planet)}: ")
+            print("\n".join(planet_str))
 
     print()
-    print(f"Total modules used ({get_float(m.evaluate(deepsum(speed_modules_used+quality_modules_used+prod_modules_used))):0.2f}):")
-    print(f"  {itemName(speed_module.name)}: {get_float(m.evaluate(speed_modules_used)):.2f}")
-    print(f"  {itemName(quality_module.name)}: {get_float(m.evaluate(quality_modules_used)):.2f}")
-    print(f"  {itemName(productivity_module.name)}: {get_float(m.evaluate(prod_modules_used)):.2f}")
-    print(f"  {beacon.name}: {get_float(m.evaluate(beacons_used)):.2f}")
+    print(f"Total modules used ({get_float(m.evaluate(deepsum(speed_modules_used)+deepsum(quality_modules_used)+deepsum(prod_modules_used))):0.2f}):")
+    for planet in all_planets + ["space"]:
+        if abs(m.evaluate(speed_modules_used[planet] + quality_modules_used[planet] + prod_modules_used[planet] + beacons_used[planet])) < eps:
+            continue
+        print(f"  {planetName(planet)} ({get_float(m.evaluate(deepsum(speed_modules_used[planet])+deepsum(quality_modules_used[planet])+deepsum(prod_modules_used[planet]))):0.2f}): ")
+        print(f"    {itemName(speed_module.name)}: {get_float(m.evaluate(speed_modules_used[planet])):.2f}")
+        print(f"    {itemName(quality_module.name)}: {get_float(m.evaluate(quality_modules_used[planet])):.2f}")
+        print(f"    {itemName(productivity_module.name)}: {get_float(m.evaluate(prod_modules_used[planet])):.2f}")
+        print(f"    {beacon.name}: {get_float(m.evaluate(beacons_used[planet])):.2f}")
 
     print()
     print(f"Leftover resources ({get_float(m.evaluate(deepsum(resources))):0.2f}):")
