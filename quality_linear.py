@@ -64,7 +64,7 @@ for ri, recipe in enumerate(all_recipes):
         #print(f"Processing recipe {recipe.name} on planet {planet}. Machine allowed on {recipe.machine.allowed_planets}")
 
         for q in quality_range:
-            max_machine_quality = max_quality if objective == "constrained" else 0
+            max_machine_quality = min(max_quality, recipe.machine.max_quality) # if objective == "constrained" else 0
             for machine_q in range(max_machine_quality+1):
                 max_quality_modules = recipe.machine.module_slots if accepts_quality and recipe.accepts_quality_module else 0
                 for num_quality_modules in range(max_quality_modules+1):

@@ -118,6 +118,7 @@ class Machine:
     productivity : float = 0
     can_recycle : bool = True
     allowed_planets: list[str] = field(default_factory=lambda: ["space"] + all_planets)
+    max_quality: int = 5
 
 @dataclass
 class Recipe:
@@ -261,6 +262,7 @@ rocket = Machine(
     module_slots=0,
     speed=1,
     qspeed=[1, 1, 1, 1, 1],
+    max_quality=0,
     can_recycle=False
 )
 
@@ -269,6 +271,7 @@ drop_pod = Machine(
     module_slots=0,
     speed=1,
     qspeed=[1, 1, 1, 1, 1],
+    max_quality=0,
     can_recycle=False
 )
 
@@ -277,6 +280,7 @@ dummy = Machine(
     module_slots=0,
     speed=100,
     qspeed=[1e3, 1e3, 1e3, 1e3, 1e3],
+    max_quality=0,
     can_recycle=False
 )
 #endregion
