@@ -787,7 +787,7 @@ def define_recipes():
     #endregion
 
     #region recipes for both assembler and foundry
-    for machine in [assembler, electromagnetic_plant]:
+    for machine in [assembler, foundry]:
         recipes += [
             Recipe(
                 name="Holmium Plate",
