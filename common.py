@@ -1106,6 +1106,18 @@ def define_recipes():
     all_recipes = recipes + recycle_recipes + science_dummy_recipes + space_travel_recipes
     # all_recipes = recipes + recycle_recipes
 
+    # check for inputs that are not outputs of any recipe
+    all_outputs = set([item for per_planet in inputs_per_planet.values() for item in per_planet.keys()])
+    for recipe in recipes:
+        all_outputs.update(recipe.outputs.keys())
+    missing_outputs = set()
+    for recipe in recipes:
+        for inp in recipe.inputs:
+            if inp not in all_outputs:
+                missing_outputs.add(inp)
+    for inp in missing_outputs:
+        print(f"Warning: {inp} is an input but not an output of any recipe")
+
 
 #region Configuration
 
