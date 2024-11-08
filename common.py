@@ -1084,6 +1084,7 @@ def define_recipes():
                     allowed_planets=all_planets,
                     accepts_productivity=False,
                     accepts_quality_module=False,
+                    accepts_speed=False,
                     crafting_time=30,
                     can_recycle=False
                 )
@@ -1099,6 +1100,7 @@ def define_recipes():
                     allowed_planets=all_planets,
                     accepts_productivity=False,
                     accepts_quality_module=False,
+                    accepts_speed=False,
                     crafting_time=1,
                     can_recycle=False
                 )
