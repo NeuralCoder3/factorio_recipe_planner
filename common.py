@@ -3,6 +3,7 @@ from collections import defaultdict
 import json
 from typing import Optional
 import math
+from enum import Enum
 
 
 rarities = ["normal", "uncommon", "rare", "epic", "legendary"]
@@ -110,6 +111,10 @@ def qualityName(quality, padding=True):
 def planetName(internal_name):
     return internal_name.capitalize()
 
+class RecyclingMode(Enum):
+    GOOD = 1 # allow actual recipe reversal
+    BAD = 2 # allow recycling but not recipe reversal (i.e. the item turns to itself)
+    NONE = 3 # no recycling at all
 
 @dataclass
 class Module:
@@ -134,7 +139,7 @@ class Machine:
     speed : float
     qspeed : list[float] = field(hash=False) # the different crafting speeds for each quality level
     productivity : float = 0
-    can_recycle : bool = True
+    can_recycle : RecyclingMode = RecyclingMode.GOOD
     allowed_planets: list[str] = field(default_factory=lambda: ["space"] + all_planets, hash=False)
     max_quality: int = 5
     underlying_item: Optional[str] = None
@@ -151,7 +156,7 @@ class Recipe:
     accepts_quality : bool = True # whether the recipe can be crafted at different quality levels
     accepts_quality_module : bool = True # whether the recipe can use quality modules
     accepts_speed : bool = True
-    can_recycle: bool = True
+    can_recycle: RecyclingMode = RecyclingMode.GOOD
     allowed_planets: list[str] = field(default_factory=lambda: all_planets + (["space"] if allow_space_crafting else []))
     forced_quality: Optional[int] = None # the base quality of the recipe is forced
     forced_input_quality: dict[str, int] = field(default_factory=dict)
@@ -209,7 +214,7 @@ miner = Machine(
     module_slots=3,
     speed=0.5,
     qspeed=[0.5, 0.5, 0.5, 0.5, 0.5],
-    can_recycle=False,
+    can_recycle=RecyclingMode.BAD,
     underlying_item="electric_mining_drill"
 )
 
@@ -218,7 +223,7 @@ big_mining_drill = Machine(
     module_slots=4,
     speed=2.5,
     qspeed=[2.5, 2.5, 2.5, 2.5, 2.5],
-    can_recycle=False,
+    can_recycle=RecyclingMode.NONE,
     underlying_item="big_mining_drill"
 )
 
@@ -227,7 +232,7 @@ smelter = Machine(
     module_slots=2,
     speed=2,
     qspeed=[2, 2.6, 3.2, 3.8, 5],
-    can_recycle=False,
+    can_recycle=RecyclingMode.BAD,
     underlying_item="electric_furnace"
 )
     
@@ -244,7 +249,7 @@ oil_refinery = Machine(
     module_slots=3,
     speed=1,
     qspeed=[1, 1.3, 1.6, 1.9, 2.5],
-    can_recycle=False,
+    can_recycle=RecyclingMode.BAD,
     underlying_item="oil_refinery"
 )
 
@@ -253,7 +258,7 @@ chemical_plant = Machine(
     module_slots=3,
     speed=1,
     qspeed=[1, 1.3, 1.6, 1.9, 2.5],
-    can_recycle=False,
+    can_recycle=RecyclingMode.BAD,
     underlying_item="chemical_plant"
 )
 
@@ -262,7 +267,7 @@ recycler = Machine(
     module_slots=4,
     speed=0.5,
     qspeed=[0.5, 0.65, 0.8, 0.95, 1.25],
-    can_recycle=False,
+    can_recycle=RecyclingMode.NONE,
     underlying_item="recycler"
 )
 
@@ -272,7 +277,7 @@ foundry = Machine(
     speed=4,
     qspeed=[4, 5.2, 6.4, 7.6, 10],
     productivity=0.5,
-    can_recycle=False,
+    can_recycle=RecyclingMode.BAD,
     underlying_item="electric_furnace"
 )
 
@@ -291,7 +296,7 @@ rocket_silo = Machine(
     speed=1,
     qspeed=[1, 1.3, 1.6, 1.9, 2.5],
     allowed_planets=all_planets,
-    can_recycle=False,
+    can_recycle=RecyclingMode.NONE,
     underlying_item="rocket_silo"
 )
 
@@ -301,7 +306,7 @@ rocket = Machine(
     speed=1,
     qspeed=[1, 1, 1, 1, 1],
     max_quality=0,
-    can_recycle=False
+    can_recycle=RecyclingMode.NONE
 )
 
 drop_pod = Machine(
@@ -310,7 +315,7 @@ drop_pod = Machine(
     speed=1,
     qspeed=[1, 1, 1, 1, 1],
     max_quality=0,
-    can_recycle=False
+    can_recycle=RecyclingMode.NONE
 )
 
 dummy = Machine(
@@ -319,7 +324,7 @@ dummy = Machine(
     speed=100,
     qspeed=[1e3, 1e3, 1e3, 1e3, 1e3],
     max_quality=0,
-    can_recycle=False
+    can_recycle=RecyclingMode.NONE
 )
 #endregion
 
@@ -517,6 +522,7 @@ def define_recipes():
             inputs={"molten_copper": 80, "molten_iron": 250, "plastic": 5},
             outputs={"low_density_structure": 1},
             productivity=item_productivity["low_density_structure"],
+            can_recycle=RecyclingMode.NONE,
             crafting_time=15
         ),
         Recipe(
@@ -524,6 +530,7 @@ def define_recipes():
             machine=foundry,
             inputs={"stone_brick": 5, "molten_iron": 20, "water": 100},
             outputs={"concrete": 10},
+            can_recycle=RecyclingMode.NONE,
             crafting_time=10
         ),
         Recipe(
@@ -866,7 +873,7 @@ def define_recipes():
             machine=electromagnetic_plant,
             inputs={"copper_plate": 1, "plastic": 1, "holmium_plate": 1, "light_oil": 5},
             outputs={"superconductor": 2},
-            can_recycle=False,
+            can_recycle=RecyclingMode.BAD,
             crafting_time=5
         ),
         Recipe(
@@ -907,13 +914,14 @@ def define_recipes():
     ]
 
     #region recipes for both assembler and eletromagnetic plant
-    for machine in [assembler, electromagnetic_plant]:
+    for machine, recycling_mode in [(assembler, RecyclingMode.GOOD), (electromagnetic_plant, RecyclingMode.NONE)]:
         recipes += [
             Recipe(
                 name="Copper Cable",
                 machine=machine,
                 inputs={"copper_plate": 1},
                 outputs={"copper_cable": 2},
+                can_recycle=recycling_mode,
                 crafting_time=0.5
             ),
             Recipe(
@@ -922,6 +930,7 @@ def define_recipes():
                 inputs={"copper_cable": 3, "iron_plate": 1},
                 outputs={"electronic_circuit": 1},
                 accepts_productivity=False,
+                can_recycle=recycling_mode,
                 crafting_time=0.5
             ),
             Recipe(
@@ -929,6 +938,7 @@ def define_recipes():
                 machine=machine,
                 inputs={"copper_cable": 4, "plastic": 2, "electronic_circuit": 2},
                 outputs={"advanced_circuit": 1},
+                can_recycle=recycling_mode,
                 crafting_time=6
             ),
             Recipe(
@@ -937,6 +947,7 @@ def define_recipes():
                 inputs={"advanced_circuit": 2, "electronic_circuit": 20, "sulfuric_acid": 5},
                 outputs={"processing_unit": 1},
                 productivity=item_productivity["processing_unit"],
+                can_recycle=recycling_mode,
                 crafting_time=10
             ),
             Recipe(
@@ -945,6 +956,7 @@ def define_recipes():
                 inputs={"advanced_circuit": 5, "electronic_circuit": 5},
                 outputs={"quality_module": 1},
                 accepts_productivity=False,
+                can_recycle=recycling_mode,
                 crafting_time=15
             ),
             Recipe(
@@ -953,6 +965,7 @@ def define_recipes():
                 inputs={"advanced_circuit": 5, "processing_unit": 5, "quality_module": 4},
                 outputs={"quality_module_2": 1},
                 accepts_productivity=False,
+                can_recycle=recycling_mode,
                 crafting_time=30
             ),
             Recipe(
@@ -961,6 +974,7 @@ def define_recipes():
                 inputs={"advanced_circuit": 5, "processing_unit": 5, "quality_module_2": 4, "superconductor": 1},
                 outputs={"quality_module_3": 1},
                 accepts_productivity=False,
+                can_recycle=recycling_mode,
                 crafting_time=60
             ),
             Recipe(
@@ -969,6 +983,7 @@ def define_recipes():
                 inputs={"advanced_circuit": 5, "electronic_circuit": 5},
                 outputs={"speed_module": 1},
                 accepts_productivity=False,
+                can_recycle=recycling_mode,
                 crafting_time=15
             ),
             Recipe(
@@ -977,6 +992,7 @@ def define_recipes():
                 inputs={"advanced_circuit": 5, "processing_unit": 5, "speed_module": 4},
                 outputs={"speed_module_2": 1},
                 accepts_productivity=False,
+                can_recycle=recycling_mode,
                 crafting_time=30
             ),
             Recipe(
@@ -985,6 +1001,7 @@ def define_recipes():
                 inputs={"advanced_circuit": 5, "processing_unit": 5, "speed_module_2": 4, "tungsten_carbide": 1},
                 outputs={"speed_module_3": 1},
                 accepts_productivity=False,
+                can_recycle=recycling_mode,
                 crafting_time=60
             ),
             Recipe(
@@ -993,6 +1010,7 @@ def define_recipes():
                 inputs={"advanced_circuit": 5, "electronic_circuit": 5},
                 outputs={"productivity_module": 1},
                 accepts_productivity=False,
+                can_recycle=recycling_mode,
                 crafting_time=15
             ),
             Recipe(
@@ -1001,6 +1019,7 @@ def define_recipes():
                 inputs={"advanced_circuit": 5, "processing_unit": 5, "productivity_module": 4},
                 outputs={"productivity_module_2": 1},
                 accepts_productivity=False,
+                can_recycle=recycling_mode,
                 crafting_time=30
             ),
             Recipe(
@@ -1009,6 +1028,7 @@ def define_recipes():
                 inputs={"advanced_circuit": 5, "processing_unit": 5, "productivity_module_2": 4, "biter_egg": 1},
                 outputs={"productivity_module_3": 1},
                 accepts_productivity=False,
+                can_recycle=recycling_mode,
                 crafting_time=60
             ),
             Recipe(
@@ -1017,6 +1037,7 @@ def define_recipes():
                 inputs={"steel_plate": 10, "copper_cable": 10, "electronic_circuit": 20, "advanced_circuit": 20},
                 outputs={"beacon": 1},
                 accepts_productivity=False,
+                can_recycle=recycling_mode,
                 crafting_time=15
             ),
             Recipe(
@@ -1025,6 +1046,7 @@ def define_recipes():
                 inputs={"steel_plate": 50, "processing_unit": 50, "holmium_plate": 150, "refined_concrete": 50},
                 outputs={"electromagnetic_plant": 1},
                 accepts_productivity=False,
+                can_recycle=recycling_mode,
                 crafting_time=10,
                 allowed_planets=["fulgora"]
             ),
@@ -1034,19 +1056,21 @@ def define_recipes():
                 inputs={"iron_plate": 2, "battery": 5},
                 outputs={"accumulator": 1},
                 accepts_productivity=False,
+                can_recycle=recycling_mode,
                 crafting_time=10
             ),
         ]
     #endregion
 
     #region recipes for both assembler and foundry
-    for machine in [assembler, foundry]:
+    for machine, recycling_mode in [(assembler, RecyclingMode.GOOD), (foundry, RecyclingMode.NONE)]:
         recipes += [
             Recipe(
                 name="Holmium Plate",
                 machine=machine,
                 inputs={"holmium_solution": 20},
                 outputs={"holmium_plate": 1},
+                can_recycle=recycling_mode,
                 crafting_time=1
             ),
             Recipe(
@@ -1055,6 +1079,7 @@ def define_recipes():
                 inputs={"steel_plate": 50, "electronic_circuit": 30, "tungsten_carbide": 50, "refined_concrete": 20, "lubricant": 20},
                 outputs={"foundry": 1},
                 accepts_productivity=False,
+                can_recycle=recycling_mode,
                 crafting_time=10,
                 allowed_planets=["vulcanus"]
             )
@@ -1065,24 +1090,31 @@ def define_recipes():
 
     global recycle_recipes
     recycle_recipes = []
-    recycle_map = {}
-    recipe_count = len(recipes)
     if allow_recycling:
-        i = 0
+        already_has_recycling = set()
+
         for ri, recipe in enumerate(recipes):
-            if not recipe.can_recycle:
-                continue
-            if not recipe.machine.can_recycle:
+            if recipe.can_recycle == RecyclingMode.NONE or recipe.machine.can_recycle == RecyclingMode.NONE:
                 continue
             if len(recipe.outputs) > 1:
                 continue
             if all(inp in fluids for inp in recipe.inputs):
                 continue
             recycle_outputs = {}
-            for inp, amount in recipe.inputs.items():
-                if inp in fluids:
-                    continue
-                recycle_outputs[inp] = amount * recycle_percentage
+            
+            if recipe.can_recycle == RecyclingMode.GOOD and recipe.machine.can_recycle == RecyclingMode.GOOD:
+                for inp, amount in recipe.inputs.items():
+                    if inp in fluids:
+                        continue
+                    recycle_outputs[inp] = amount * recycle_percentage
+            else:
+                recycle_outputs = {inp: amount * recycle_percentage for inp, amount in recipe.outputs.items()}
+
+            recycle_input = list(recipe.outputs.keys())[0]
+            if recycle_input in already_has_recycling:
+                print(f"Warning: {recycle_input} is already recycled, mark one recipe as can_recycle=RecyclingMode.NONE")
+            already_has_recycling.add(recycle_input)
+
             recycle_recipes.append(
                 Recipe(
                     name=f"Recycle {recipe.name}",
@@ -1093,8 +1125,6 @@ def define_recipes():
                     accepts_productivity=False,
                 )
             )
-            recycle_map[ri] = i+recipe_count
-            i+=1
 
     science_dummy_recipes = [
         Recipe(
@@ -1106,7 +1136,7 @@ def define_recipes():
             accepts_quality_module=False,
             accepts_speed=False,
             crafting_time=1,
-            can_recycle=False
+            can_recycle=RecyclingMode.NONE
         )
         for s in science_to_consider] # todo: add different qualities
 
