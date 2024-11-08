@@ -644,6 +644,7 @@ def define_recipes():
             inputs={"sulfuric_acid": 1000, "calcite": 1},
             outputs={"steam": 10000},
             allowed_planets=["vulcanus"],
+            accepts_productivity=False,
             crafting_time=5
         ),
         Recipe(
@@ -827,6 +828,7 @@ def define_recipes():
             machine=electromagnetic_plant,
             inputs={"copper_plate": 1, "plastic": 1, "holmium_plate": 1, "light_oil": 5},
             outputs={"superconductor": 2},
+            can_recycle=False,
             crafting_time=5
         ),
         Recipe(
