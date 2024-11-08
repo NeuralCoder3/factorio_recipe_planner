@@ -1,8 +1,10 @@
 # mode = "z3"
 # mode = "mip"
 mode = "gurobi"
-mode = "ortools"
+# mode = "ortools"
 # mode = "minizinc"
+
+no_output = False
 
 eps = 1e-6
 
@@ -68,9 +70,12 @@ elif mode == "z3":
     
 elif mode == "gurobi":
     
-    from gurobipy import Model, GRB, quicksum, Var
-    
-    s = Model()
+    from gurobipy import Model, Env, GRB, quicksum, Var
+    env = Env(empty=True)
+    if no_output:
+        env.setParam("OutputFlag",0)
+    env.start()
+    s = Model(env=env)
     s = Wrapper(s)
 
     used_names = set()        
@@ -81,18 +86,17 @@ elif mode == "gurobi":
         return s.addVar(lb=0, name=name)
     
     def Int(name):
+        assert name not in used_names
+        used_names.add(name)
         return s.addVar(vtype=GRB.INTEGER, lb=0, name=name)
     
     def add_constraint(expr):
-        global s
-        s.addConstr(expr)
+        return s.addConstr(expr)
         
     def minimize_objective(obj):
-        global s
         s.setObjective(obj, GRB.MINIMIZE)
         
     def check():
-        global s
         s.optimize()
         print("Status:", s.status)
         return s.status
@@ -124,7 +128,8 @@ elif mode == "gurobi":
         
     s.model = lambda: Model(s)
     
-    s.Params.TimeLimit = 10 # in seconds
+    s.Params.TimeLimit = 60 # in seconds
+    s.Params.Heuristics = 0.5
     
 elif mode == "ortools":
     from ortools.linear_solver import pywraplp 
@@ -163,3 +168,17 @@ elif mode == "ortools":
 else:
     raise ValueError(f"Unknown mode {mode}")
 
+
+
+def get_float(expr):
+    if isinstance(expr, int):
+        return expr
+    if isinstance(expr, float):
+        return expr
+    return float(expr.numerator_as_long())/float(expr.denominator_as_long())
+
+def is_satisfied(res):
+    if isinstance(sat, list):
+        return res in sat
+    else:
+        return res == sat

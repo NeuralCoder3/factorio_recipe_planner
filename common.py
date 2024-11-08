@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 from collections import defaultdict
+import json
 from typing import Optional
 import math
 
@@ -77,6 +78,19 @@ rocket_stack_sizes = {
     "agricultural_science_pack": 1000,
     "cryogenic_science_pack": 1000,
     "promethium_science_pack": 1000,
+    
+    "beacon": 20,
+    "electromagnetic_plant": 5,
+    "foundry": 5,
+    "assembling_machine_1": 50,
+    "assembling_machine_2": 50,
+    "assembling_machine_3": 25,
+    "electric_furnace": 50,
+    "electric_mining_drill": 50,
+    "big_mining_drill": 20,
+    "oil_refinery": 10,
+    "chemical_plant": 10,
+    "recycler": 10,
 }
 
 recycle_percentage = 0.25
@@ -103,22 +117,27 @@ class Module:
     quality_bonus : float = 0
     speed_bonus : float = 0
     productivity_bonus : float = 0
+    underlying_item: Optional[str] = None
+    underlying_quality: Optional[int] = None
 
 @dataclass
 class Beacon:
     name : str
     distribution_efficiency : float
+    underlying_item: Optional[str] = None
+    underlying_quality: Optional[int] = None
 
-@dataclass
+@dataclass(unsafe_hash=True)
 class Machine:
     name : str
     module_slots : int
     speed : float
-    qspeed : list[float] # the different crafting speeds for each quality level
+    qspeed : list[float] = field(hash=False) # the different crafting speeds for each quality level
     productivity : float = 0
     can_recycle : bool = True
-    allowed_planets: list[str] = field(default_factory=lambda: ["space"] + all_planets)
+    allowed_planets: list[str] = field(default_factory=lambda: ["space"] + all_planets, hash=False)
     max_quality: int = 5
+    underlying_item: Optional[str] = None
 
 @dataclass
 class Recipe:
@@ -129,8 +148,9 @@ class Recipe:
     crafting_time : float = 1
     productivity : float = 0
     accepts_productivity : bool = True
-    accepts_quality : bool = True
-    accepts_quality_module : bool = True
+    accepts_quality : bool = True # whether the recipe can be crafted at different quality levels
+    accepts_quality_module : bool = True # whether the recipe can use quality modules
+    accepts_speed : bool = True
     can_recycle: bool = True
     allowed_planets: list[str] = field(default_factory=lambda: all_planets + (["space"] if allow_space_crafting else []))
     forced_quality: Optional[int] = None # the base quality of the recipe is forced
@@ -140,37 +160,45 @@ class Recipe:
     forced_output_planet: Optional[str] = None
     
 #region Modules
-speed_modules = [[]] + [
+speed_modules: list[list[Module]] = [[]] + [
     [
         Module(
             name=f"Speed Module {level+1} ({qualityName(q, padding=False)})",
             quality_bonus=[-0.01, -0.015, -0.025][level],
             speed_bonus=[0.2, 0.3, 0.5][level] * [1, 1.3, 1.6, 1.9, 2.5][q],
+            underlying_item=["speed_module", "speed_module_2", "speed_module_3"][level],
+            underlying_quality=q
         ) for q in range(len(rarities))
     ] for level in range(3)
 ]
-productivity_modules = [[]] + [
+productivity_modules: list[list[Module]] = [[]] + [
     [
         Module(
             name=f"Productivity Module {level+1} ({qualityName(q, padding=False)})",
             productivity_bonus=math.floor([0.04, 0.06, 0.1][level] * [1, 1.3, 1.6, 1.9, 2.5][q] * 100) / 100,
             speed_bonus=[-0.05, -0.10, -0.15][level],
+            underlying_item=["productivity_module", "productivity_module_2", "productivity_module_3"][level],
+            underlying_quality=q
         ) for q in range(len(rarities))
     ] for level in range(3)
 ]
-quality_modules = [[]] + [
+quality_modules: list[list[Module]] = [[]] + [
     [
         Module(
             name=f"Quality Module {level+1} ({qualityName(q, padding=False)})",
             quality_bonus=[0.01, 0.02, 0.025][level] * [1, 1.3, 1.6, 1.9, 2.5][q],
-            speed_bonus=[-0.05, -0.10, -0.15][level],
+            speed_bonus=-0.05,
+            underlying_item=["quality_module", "quality_module_2", "quality_module_3"][level],
+            underlying_quality=q
         ) for q in range(len(rarities))
     ] for level in range(3)
 ]
 beacons = [
     Beacon(
         name=f"Beacon ({qualityName(q, padding=False)})",
-        distribution_efficiency=[1.5, 1.7, 1.9, 2.1, 2.5][q]
+        distribution_efficiency=[1.5, 1.7, 1.9, 2.1, 2.5][q],
+        underlying_item="beacon",
+        underlying_quality=q
     ) for q in range(len(rarities))
 ]
 #endregion
@@ -181,15 +209,17 @@ miner = Machine(
     module_slots=3,
     speed=0.5,
     qspeed=[0.5, 0.5, 0.5, 0.5, 0.5],
-    can_recycle=False
+    can_recycle=False,
+    underlying_item="electric_mining_drill"
 )
 
-big_miner = Machine(
+big_mining_drill = Machine(
     "Big Miner",
     module_slots=4,
     speed=2.5,
     qspeed=[2.5, 2.5, 2.5, 2.5, 2.5],
-    can_recycle=False
+    can_recycle=False,
+    underlying_item="big_mining_drill"
 )
 
 smelter = Machine(
@@ -197,7 +227,8 @@ smelter = Machine(
     module_slots=2,
     speed=2,
     qspeed=[2, 2.6, 3.2, 3.8, 5],
-    can_recycle=False
+    can_recycle=False,
+    underlying_item="electric_furnace"
 )
     
 assembler = Machine(
@@ -205,6 +236,7 @@ assembler = Machine(
     module_slots=4, 
     speed=1.25,
     qspeed=[1.25, 1.625, 2, 2.375, 3.125],
+    underlying_item="assembling_machine_3"
 )
 
 oil_refinery = Machine(
@@ -212,7 +244,8 @@ oil_refinery = Machine(
     module_slots=3,
     speed=1,
     qspeed=[1, 1.3, 1.6, 1.9, 2.5],
-    can_recycle=False
+    can_recycle=False,
+    underlying_item="oil_refinery"
 )
 
 chemical_plant = Machine(
@@ -220,7 +253,8 @@ chemical_plant = Machine(
     module_slots=3,
     speed=1,
     qspeed=[1, 1.3, 1.6, 1.9, 2.5],
-    can_recycle=False
+    can_recycle=False,
+    underlying_item="chemical_plant"
 )
 
 recycler = Machine(
@@ -228,7 +262,8 @@ recycler = Machine(
     module_slots=4,
     speed=0.5,
     qspeed=[0.5, 0.65, 0.8, 0.95, 1.25],
-    can_recycle=False
+    can_recycle=False,
+    underlying_item="recycler"
 )
 
 foundry = Machine(
@@ -237,7 +272,8 @@ foundry = Machine(
     speed=4,
     qspeed=[4, 5.2, 6.4, 7.6, 10],
     productivity=0.5,
-    can_recycle=False
+    can_recycle=False,
+    underlying_item="electric_furnace"
 )
 
 electromagnetic_plant = Machine(
@@ -245,7 +281,8 @@ electromagnetic_plant = Machine(
     module_slots=5,
     speed=2,
     qspeed=[2, 2.6, 3.2, 3.8, 5],
-    productivity=0.5
+    productivity=0.5,
+    underlying_item="electromagnetic_plant"
 )
 
 rocket_silo = Machine(
@@ -254,7 +291,8 @@ rocket_silo = Machine(
     speed=1,
     qspeed=[1, 1.3, 1.6, 1.9, 2.5],
     allowed_planets=all_planets,
-    can_recycle=False
+    can_recycle=False,
+    underlying_item="rocket_silo"
 )
 
 rocket = Machine(
@@ -297,7 +335,7 @@ def define_recipes():
     global recipes
 
     #region recipes for all miners
-    for machine in [miner, big_miner]:
+    for machine in [miner, big_mining_drill]:
         recipes += [
             Recipe(
                 name="Mine Copper",
@@ -346,7 +384,7 @@ def define_recipes():
         #region special mining/"smelting" recipes
         Recipe(
             name="Mine Tungsten",
-            machine=big_miner,
+            machine=big_mining_drill,
             inputs={"tungsten_ore_vein": 1},
             outputs={"tungsten_ore": 1},
             productivity=item_productivity["mining"],
@@ -1064,9 +1102,13 @@ def define_recipes():
             machine=dummy,
             inputs={s + "_pack": 1},
             outputs={s: 1},
-            crafting_time=1
+            accepts_productivity=False,
+            accepts_quality_module=False,
+            accepts_speed=False,
+            crafting_time=1,
+            can_recycle=False
         )
-        for s in science_to_consider]
+        for s in science_to_consider] # todo: add different qualities
 
 
     global space_travel_recipes
@@ -1123,11 +1165,25 @@ def define_recipes():
         print(f"Warning: {inp} is an input but not an output of any recipe")
 
 
+# if the file "cost_matrix.json" exists, load it into the variable "cost_matrix"
+cost_matrix = defaultdict(lambda: defaultdict(lambda: [1e8 for _ in rarities]))        
+try:
+    with open("cost_matrix.json", "r") as f:
+        cost_matrix_in = json.load(f)
+        for planet, items in cost_matrix_in.items():
+            for item, qualities in items.items():
+                cost_matrix[planet][item] = qualities
+except FileNotFoundError:
+    pass
+
+
 #region Configuration
 
 # objective = "overhead"
-objective = "inputs"
+# objective = "inputs"
+objective = "inputs_cost_matrix"
 # objective = "constrained"
+# objective = "generate_cost_matrix"
 
 # goal_item = "electronic_circuit"
 # goal_quality = 2
@@ -1242,6 +1298,29 @@ inputs_per_planet = {
         "sulfuric_acid": 0.001,
     }
 }
+
+compute_cost_for = [
+    "quality_module",
+    "quality_module_2",
+    "quality_module_3",
+    "productivity_module",
+    "productivity_module_2",
+    "productivity_module_3",
+    "speed_module",
+    "speed_module_2",
+    "speed_module_3",
+    "beacon",
+    "electromagnetic_plant",
+    "foundry",
+    "assembling_machine_3",
+    "electric_furnace",
+    "electric_mining_drill",
+    "big_mining_drill",
+    "oil_refinery",
+    "chemical_plant",
+    "recycler",
+    "rocket_silo",
+]
 
 #endregion
 
