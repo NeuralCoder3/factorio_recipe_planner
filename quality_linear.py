@@ -171,11 +171,15 @@ for planet in all_planets + ["space"]:
     for resource, quality_amounts in resources[planet].items():
         for quality, amount in quality_amounts.items():
             s.add(amount >= 0)
-
-if goal_planet is not None:
-    goal_resource = resources[goal_planet][goal_item][goal_quality]
-else:
-    goal_resource = sum(resources[planet][goal_item][goal_quality] for planet in all_planets + ["space"])
+            
+goal_resources = []
+for g in goal:
+    if g["planet"] is not None:
+        goal_resources.append(resources[g["planet"]][g["item"]][g["quality"]])
+    else:
+        goal_resources.append(
+            sum(resources[planet][g["item"]][g["quality"]] for planet in all_planets + ["space"])
+        )
 
 input_cost = deepsum(scaled_inputs)
 overhead_cost = deepsum(resources)
@@ -185,7 +189,8 @@ space_travel_cost = sum(machines[planet][rocket][0] for planet in all_planets)
 org_objective =  objective
 if objective == "inputs":
     objective = input_cost # + machine_cost * 10 + (space_travel_cost * 100000 if reduce_space_travel else 0)
-    s.add(goal_resource >= goal_amount)
+    for gr,g in zip(goal_resources, goal):
+        s.add(gr >= g["amount"])
 elif objective == "inputs_cost_matrix":
     objective = input_cost
     hours_of_amortization = 1
@@ -207,7 +212,8 @@ elif objective == "inputs_cost_matrix":
     if reduce_space_travel:
         objective += space_travel_cost * 100000
 
-    s.add(goal_resource >= goal_amount)
+    for gr,g in zip(goal_resources, goal):
+        s.add(gr >= g["amount"])
     s.minimize(objective)
 
     # preoptimize the actual recipes used
@@ -249,9 +255,12 @@ elif objective == "inputs_cost_matrix":
 
 elif objective == "overhead":
     objective = overhead_cost + machine_cost * 10
-    s.add(overhead_cost >= goal_amount)
+    if len(goal) > 1:
+        raise ValueError("Only one goal allowed for objective overhead")
+    # s.add(overhead_cost >= goal_amount)
+    s.add(overhead_cost >= goal[0]["amount"])
 elif objective == "constrained":
-    objective = -goal_resource + machine_cost / 1e6
+    objective = -sum(goal_resources) + machine_cost / 1e6
     for planit in all_planets + ["space"]:
         s.add(speed_modules_used[planet] <= available_speed_modules[planet])
         s.add(quality_modules_used[planet] <= available_quality_modules[planet])
@@ -301,7 +310,10 @@ if is_satisfied(res):
     print("Solution found")
     print()
     m = s.model()
-    print(f"Producing {get_float(m.evaluate(goal_resource)):.2f} {goal_item} at quality {qualityName(goal_quality, padding=False)}")
+    # print(f"Producing {get_float(m.evaluate(goal_resource)):.2f} {goal_item} at quality {qualityName(goal_quality, padding=False)}")
+    print("Producing:")
+    for gr,g in zip(goal_resources, goal):
+        print(f"  {get_float(m.evaluate(gr)):.2f} {itemName(g['item'])} at quality {qualityName(g['quality'], padding=False)}")
     print(f"Objective ({org_objective}): {get_float(m.evaluate(objective)):.2f}")
     
     print()

@@ -1059,6 +1059,14 @@ def define_recipes():
                 can_recycle=recycling_mode,
                 crafting_time=10
             ),
+            Recipe(
+                name="Solar Panel",
+                machine=machine,
+                inputs={"steel_plate": 5, "electronic_circuit": 15, "copper_plate": 5},
+                outputs={"solar_panel": 1},
+                crafting_time=10,
+                accepts_productivity=False
+            ),
         ]
     #endregion
 
@@ -1222,10 +1230,62 @@ objective = "inputs_cost_matrix"
 # goal_item = "processing_unit"
 # goal_quality = 2
 
-goal_item = "quality_module_3"
-goal_planet = "vulcanus"
-goal_quality = 2
-goal_amount = 1
+# goal_item = "quality_module_3"
+# goal_planet = "vulcanus"
+# goal_quality = 2
+# goal_amount = 1
+
+goal = [
+    # {
+    #     "item": "quality_module_3",
+    #     "planet": "vulcanus",
+    #     "quality": 2,
+    #     "amount": 1
+    # },
+    # {
+    #     "item": "speed_module_3",
+    #     "planet": "vulcanus",
+    #     "quality": 2,
+    #     "amount": 1
+    # },
+    # {
+    #     "item": "productivity_module_2",
+    #     "planet": "vulcanus",
+    #     "quality": 2,
+    #     "amount": 1
+    # }
+    # {
+    #     "item": "beacon",
+    #     "planet": "vulcanus",
+    #     "quality": 2,
+    #     "amount": 1/30
+    # },
+    {
+        "item": "solar_panel",
+        "planet": "vulcanus",
+        "quality": 2,
+        "amount": 1/30
+    },
+]
+
+exclude_planets = [
+    "space",
+    # "nauvis",
+    # "fulgora",
+    # "vulcanus",
+]
+
+# goal_item = "speed_module_3"
+# goal_planet = "vulcanus"
+# goal_quality = 4
+# goal_amount = 1/60
+
+# goal_item = "processing_unit"
+# # goal_planet = "fulgora"
+# # goal_planet = "nauvis"
+# goal_planet = "vulcanus"
+# goal_quality = 0
+# goal_amount = 1
 
 max_quality = 2
 # max_quality = len(rarities)-1
@@ -1242,13 +1302,13 @@ max_beacons_per_machine = 4
 item_productivity = {
     # productivity research (e.g. steel)
     "low_density_structure": 0.2,
-    "steel_plate": 0.2,
-    "processing_unit": 0.1,
-    "plastic": 0.0,
-    "rocket_fuel": 0.0,
-    "asteroids": 0.0,
-    "scrap": 0.3,
-    "mining": 0.3,
+    "steel_plate": 0.3,
+    "processing_unit": 0.6,
+    "plastic": 0.4,
+    "rocket_fuel": 0.3,
+    "asteroids": 0.4,
+    "scrap": 0.6,
+    "mining": 0.5,
 }
 
 allow_space_crafting = False
@@ -1294,13 +1354,6 @@ science_to_consider = [
     #"promethium_science",
 ]
 
-
-exclude_planets = [
-    # "space",
-    # "nauvis",
-    # "fulgora",
-    # "vulcanus",
-]
 
 # planet -> item -> cost scaling factor
 inputs_per_planet = {
