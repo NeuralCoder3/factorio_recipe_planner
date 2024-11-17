@@ -1237,7 +1237,7 @@ def define_recipes():
                     machine=recycler,
                     inputs=recipe.outputs,
                     outputs=recycle_outputs,
-                    crafting_time=recipe.crafting_time / 8,
+                    crafting_time=recipe.crafting_time / 16,
                     accepts_productivity=False,
                 )
             )
