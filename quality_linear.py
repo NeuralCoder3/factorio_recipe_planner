@@ -3,6 +3,7 @@ from common import *
 from solver import *
 import time
 from typing import Any
+import os
 
 def deepsum(d):
     if isinstance(d, dict):
@@ -312,28 +313,45 @@ if is_satisfied(res):
     m = s.model()
     # print(f"Producing {get_float(m.evaluate(goal_resource)):.2f} {goal_item} at quality {qualityName(goal_quality, padding=False)}")
     print("Producing:")
+    outname = []
+    outdata = {}
+    outdata["goal"] = []
     for gr,g in zip(goal_resources, goal):
-        print(f"  {get_float(m.evaluate(gr)):.2f} {itemName(g['item'])} at quality {qualityName(g['quality'], padding=False)}")
+        quantity = f"{get_float(m.evaluate(gr)):.2f}"
+        print(f"  {quantity} {itemName(g['item'])} at quality {qualityName(g['quality'], padding=False)}")
+        outname.append(f"{quantity}_{itemName(g['item'])}_{qualityName(g['quality'], padding=False)}")
+        outdata["goal"].append({
+            "quantity": get_float(m.evaluate(gr)),
+            "item": itemName(g['item']),
+            "quality": qualityName(g['quality'], padding=False),
+            "planet": planetName(g['planet']),
+        })
+    outname = "__".join(outname)+".json"
     print(f"Objective ({org_objective}): {get_float(m.evaluate(objective)):.2f}")
     
     print()
     print(f"Resources ({get_float(m.evaluate(deepsum(inputs))):0.2f}):")
+    outdata["resources"] = {}
     for planet in all_planets + ["space"]:
         if abs(m.evaluate(deepsum(inputs[planet]))) < eps:
             continue
         print(f"  {planetName(planet)}: ")
+        outdata["resources"][planet] = {}
         for resource, quality_amounts in inputs[planet].items():
             if abs(m.evaluate(sum(quality_amounts.values()))) < eps:
                 continue
             print(f"    {itemName(resource)}: ")
+            outdata["resources"][planet][resource] = {}
             for quality, amount in sorted(quality_amounts.items(), key=lambda x: x[0]):
                 if abs(get_float(m[amount])) < eps:
                     continue
                 print(f"      {qualityName(quality)}: {get_float(m[amount]):.2f}")
+                outdata["resources"][planet][resource][quality] = get_float(m[amount])
     
     
     print()
     print("Machines:")
+    outdata["machines"] = {}
     for planet in all_planets + ["space"]:
         if planet not in recipe_amounts:
             continue
@@ -341,6 +359,7 @@ if is_satisfied(res):
             continue
 
         print(f"  {planetName(planet)}: ")
+        outdata["machines"][planet] = []
         for ri, recipe in enumerate(all_recipes):
             for machine_q in range(max_quality+1):
                 machine_str = []
@@ -409,6 +428,23 @@ if is_satisfied(res):
                                         s+=" -> "
                                         s+=" + ".join( [f"{recipe_amount*resource_amount*productivity_bonus:.2f}/s {itemName(resource)}" for resource, resource_amount in recipe.outputs.items()])
                                         
+                                        outdata["machines"][planet].append({
+                                            "recipe": recipe.name,
+                                            "machine": recipe.machine.name,
+                                            "machine_quality": qualityName(machine_q, padding=False),
+                                            "quality": qualityName(q, padding=False),
+                                            "modules": {
+                                                "quality": num_quality_modules,
+                                                "productivity": num_productivity_modules,
+                                                "speed": num_speed_modules,
+                                                "beacons": num_beacons,
+                                            },
+                                            "machine_count": machine_count,
+                                            "true_machine_count": true_machine_count,
+                                            "input": {resource: recipe_amount*resource_amount for resource, resource_amount in recipe.inputs.items()},
+                                            "output": {resource: recipe_amount*resource_amount*productivity_bonus for resource, resource_amount in recipe.outputs.items()},
+                                        })
+                                        
                                         machine_str.append(s)
                 if machine_str:
                     print(f"    {recipe.name} in {recipe.machine.name} ({qualityName(machine_q, padding=False)}): ")
@@ -457,5 +493,12 @@ if is_satisfied(res):
             if resource_str:
                 print(f"    {itemName(resource)}: ")
                 print("\n".join(resource_str))
+                
+    if not os.path.exists("output"):
+        os.makedirs("output")
+    with open(f"output/{outname}", "w") as f:
+        json.dump(outdata, f, indent=4)
+    print()
+    print(f"Output written to output/{outname}")
 else:
     print("No solution found")
