@@ -697,6 +697,7 @@ def define_recipes():
             machine=chemical_plant,
             inputs={"steam": 1000},
             outputs={"water": 90},
+            accepts_productivity=False,
             crafting_time=1
         ),
         Recipe(
@@ -751,9 +752,9 @@ def define_recipes():
             name="Refined Concrete",
             machine=assembler,
             inputs={"steel_plate": 1, "iron_stick": 8, "concrete": 20, "water": 100},
-            outputs={"refined_concrete": 15},
+            outputs={"refined_concrete": 10},
             accepts_productivity=False,
-            crafting_time=10
+            crafting_time=15
         ),
         Recipe(
             name="Assembling machine 1",
@@ -793,7 +794,7 @@ def define_recipes():
             inputs={"iron_plate": 10, "iron_gear_wheel": 5, "electronic_circuit": 3},
             outputs={"electric_mining_drill": 1},
             accepts_productivity=False,
-            crafting_time=0.5
+            crafting_time=2
         ),
         Recipe(
             name="Electric Engine Unit",
