@@ -462,8 +462,8 @@ def define_recipes():
         Recipe(
             name="Melt Copper From Lava",
             machine=foundry,
-            inputs={"lava": 50, "calcite": 1},
-            outputs={"molten_copper": 250, "stone": 20},
+            inputs={"lava": 500, "calcite": 1},
+            outputs={"molten_copper": 250, "stone": 15},
             crafting_time=16
         ),
         Recipe(
@@ -476,8 +476,8 @@ def define_recipes():
         Recipe(
             name="Melt Iron From Lava",
             machine=foundry,
-            inputs={"lava": 50, "calcite": 1},
-            outputs={"molten_iron": 250, "stone": 20},
+            inputs={"lava": 500, "calcite": 1},
+            outputs={"molten_iron": 250, "stone": 10},
             crafting_time=16
         ),
         Recipe(
