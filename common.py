@@ -380,7 +380,7 @@ def define_recipes():
                 inputs={"scrap_vein": 1},
                 outputs={"scrap": 1},
                 productivity=item_productivity["mining"],
-                crafting_time=1
+                crafting_time=0.5
             ),
         ]
     #endregion
