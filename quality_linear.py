@@ -89,7 +89,7 @@ for ri, recipe in enumerate(all_recipes):
         for q in quality_range:
             max_machine_quality = min(max_quality, recipe.machine.max_quality) # if objective == "constrained" else 0
             for machine_q in range(max_machine_quality+1):
-                max_quality_modules = recipe.machine.module_slots if accepts_quality and recipe.accepts_quality_module else 0
+                max_quality_modules = recipe.machine.module_slots if not(all(out in fluids for out in recipe.outputs)) and recipe.accepts_quality_module else 0
                 for num_quality_modules in range(max_quality_modules+1):
                     max_prod_modules = recipe.machine.module_slots - num_quality_modules if recipe.accepts_productivity else 0
                     for num_productivity_modules in range(max_prod_modules+1):
