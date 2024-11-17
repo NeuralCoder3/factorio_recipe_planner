@@ -101,7 +101,7 @@ for ri, recipe in enumerate(all_recipes):
                                 recipe_amounts[planet][ri][q][machine_q][num_quality_modules][num_productivity_modules][num_speed_modules][num_beacons] = recipe_amount
                                 s.add(recipe_amount >= 0)
 
-                                effective_num_speed_modules = num_speed_modules + num_beacons * beacon.distribution_efficiency * 2
+                                effective_num_speed_modules = num_speed_modules + math.sqrt(num_beacons) * beacon.distribution_efficiency * 2
 
                                 speed_bonus = 1
                                 speed_bonus += speed_module.speed_bonus * effective_num_speed_modules
@@ -362,7 +362,7 @@ if is_satisfied(res):
                                     if num_beacons not in recipe_amounts[planet][ri][q][machine_q][num_quality_modules][num_productivity_modules][num_speed_modules]:
                                         continue
 
-                                    effective_num_speed_modules = num_speed_modules + num_beacons * beacon.distribution_efficiency * 2
+                                    effective_num_speed_modules = num_speed_modules + math.sqrt(num_beacons) * beacon.distribution_efficiency * 2
 
                                     speed_bonus = 1
                                     speed_bonus += speed_module.speed_bonus * effective_num_speed_modules
