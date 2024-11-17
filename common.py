@@ -258,7 +258,7 @@ chemical_plant = Machine(
     module_slots=3,
     speed=1,
     qspeed=[1, 1.3, 1.6, 1.9, 2.5],
-    can_recycle=RecyclingMode.BAD,
+    can_recycle=RecyclingMode.GOOD,
     underlying_item="chemical_plant"
 )
 
@@ -617,6 +617,7 @@ def define_recipes():
             machine=chemical_plant,
             inputs={"heavy_oil": 20},
             outputs={"solid_fuel": 1},
+            can_recycle=RecyclingMode.BAD,
             crafting_time=1
         ),
         Recipe(
@@ -624,6 +625,7 @@ def define_recipes():
             machine=chemical_plant,
             inputs={"light_oil": 10},
             outputs={"solid_fuel": 1},
+            can_recycle=RecyclingMode.BAD,
             crafting_time=1
         ),
         Recipe(
@@ -631,6 +633,7 @@ def define_recipes():
             machine=chemical_plant,
             inputs={"petroleum_gas": 20},
             outputs={"solid_fuel": 1},
+            can_recycle=RecyclingMode.BAD,
             crafting_time=1
         ),
         Recipe(
@@ -646,6 +649,7 @@ def define_recipes():
             inputs={"coal": 1, "petroleum_gas": 20},
             outputs={"plastic": 2},
             productivity=item_productivity["plastic"],
+            can_recycle=RecyclingMode.BAD,
             crafting_time=1
         ),
         Recipe(
@@ -653,6 +657,7 @@ def define_recipes():
             machine=chemical_plant,
             inputs={"water": 30, "petroleum_gas": 30},
             outputs={"sulfur": 2},
+            can_recycle=RecyclingMode.BAD,
             crafting_time=1
         ),
         Recipe(
@@ -667,6 +672,7 @@ def define_recipes():
             machine=chemical_plant,
             inputs={"iron_plate": 1, "copper_plate": 1, "sulfuric_acid": 20},
             outputs={"battery": 1},
+            can_recycle=RecyclingMode.GOOD, # for some reason, batteries are recyclable
             crafting_time=4
         ),
         Recipe(
@@ -674,6 +680,7 @@ def define_recipes():
             machine=chemical_plant,
             inputs={"coal": 1, "sulfur": 1, "water": 10},
             outputs={"explosives": 2},
+            can_recycle=RecyclingMode.BAD,
             crafting_time=4
         ),
         Recipe(
@@ -681,6 +688,7 @@ def define_recipes():
             machine=chemical_plant,
             inputs={"coal": 2, "sulfuric_acid": 20},
             outputs={"carbon": 1},
+            can_recycle=RecyclingMode.BAD,
             crafting_time=1
         ),
         Recipe(
