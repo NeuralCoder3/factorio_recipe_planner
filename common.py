@@ -866,6 +866,111 @@ def define_recipes():
             outputs={"iron_stick": 2},
             crafting_time=0.5
         ),
+        Recipe(
+            name="Utility Science Pack",
+            machine=assembler,
+            inputs={"low_density_structure": 3, "processing_unit": 2, "flying_robot_frame": 1},
+            outputs={"utility_science_pack" : 3},
+            crafting_time=21
+        ),
+        Recipe(
+            name="Production Science Pack",
+            machine=assembler,
+            inputs={"productivity_module": 1, "electric_furnace": 1, "rail": 30},
+            outputs={"production_science_pack" : 3},
+            crafting_time=21
+        ),
+        Recipe(
+            name="Chemical Science Pack",
+            machine=assembler,
+            inputs={"advanced_circuit": 3, "sulfur": 1, "engine_unit": 2},
+            outputs={"chemical_science_pack" : 2},
+            crafting_time=24
+        ),
+        Recipe(
+            name="Military Science Pack",
+            machine=assembler,
+            inputs={"piercing_rounds_magazine": 1, "grenade": 1, "stone_wall": 2},
+            outputs={"military_science_pack" : 2},
+            crafting_time=10
+        ),
+        Recipe(
+            name="Logistic Science Pack",
+            machine=assembler,
+            inputs={"transport_belt": 1, "inserter": 1},
+            outputs={"logistic_science_pack" : 1},
+            crafting_time=6
+        ),
+        Recipe(
+            name="Automation Science Pack",
+            machine=assembler,
+            inputs={"iron_gear_wheel": 1, "copper_plate": 1},
+            outputs={"automation_science_pack" : 1},
+            crafting_time=5
+        ),
+        Recipe(
+            name="Stone Wall",
+            machine=assembler,
+            inputs={"stone_brick": 5},
+            outputs={"stone_wall": 1},
+            crafting_time=0.5,
+            accepts_productivity=False
+        ),
+        Recipe(
+            name="Grenade",
+            machine=assembler,
+            inputs={"iron_plate": 5, "coal": 10},
+            outputs={"grenade": 1},
+            crafting_time=8,
+            accepts_productivity=False
+        ),
+        Recipe(
+            name="Piercing Rounds Magazine",
+            machine=assembler,
+            inputs={"copper_plate": 5, "steel_plate": 1, "firearm_magazine": 1},
+            outputs={"piercing_rounds_magazine": 1},
+            crafting_time=3,
+            accepts_productivity=False
+        ),
+        Recipe(
+            name="Firearm Magazine",
+            machine=assembler,
+            inputs={"iron_plate": 4},
+            outputs={"firearm_magazine": 1},
+            crafting_time=1,
+            accepts_productivity=False
+        ),
+        Recipe(
+            name="Transport Belt",
+            machine=assembler,
+            inputs={"iron_plate": 1, "iron_gear_wheel": 1},
+            outputs={"transport_belt": 2},
+            crafting_time=0.5,
+            accepts_productivity=False
+        ),
+        Recipe(
+            name="Inserter",
+            machine=assembler,
+            inputs={"iron_plate": 1, "iron_gear_wheel": 1, "electronic_circuit": 1},
+            outputs={"inserter": 1},
+            crafting_time=0.5,
+            accepts_productivity=False
+        ),
+        Recipe(
+            name="Flying Robot Frame",
+            machine=assembler,
+            inputs={"electric_engine_unit": 1, "battery": 2, "steel_plate": 1, "electronic_circuit": 3},
+            outputs={"flying_robot_frame": 1},
+            crafting_time=20
+        ),
+        Recipe(
+            name="Rail",
+            machine=assembler,
+            inputs={"stone": 1, "steel_plate": 1, "iron_stick": 1},
+            outputs={"rail": 2},
+            crafting_time=0.5,
+            accepts_productivity=False
+        ),
         #endregion
 
         #region electromagnetic plant recipes
@@ -907,6 +1012,7 @@ def define_recipes():
             machine=rocket_silo,
             inputs={"low_density_structure": 1, "rocket_fuel": 1, "processing_unit": 1},
             outputs={"rocket_part": 1},
+            productivity=item_productivity["rocket_part"],
             forced_quality=0,
             crafting_time=3,
             accepts_quality=False
@@ -1065,8 +1171,9 @@ def define_recipes():
                 machine=machine,
                 inputs={"steel_plate": 5, "electronic_circuit": 15, "copper_plate": 5},
                 outputs={"solar_panel": 1},
+                accepts_productivity=False,
+                can_recycle=recycling_mode,
                 crafting_time=10,
-                accepts_productivity=False
             ),
         ]
     #endregion
@@ -1140,14 +1247,16 @@ def define_recipes():
             name=f"Convert {itemName(s + '_pack')} to {itemName(s)}",
             machine=dummy,
             inputs={s + "_pack": 1},
-            outputs={s: 1},
+            outputs={s: q+1 if q < 4 else 6},
             accepts_productivity=False,
             accepts_quality_module=False,
             accepts_speed=False,
+            forced_quality=q,
+            forced_output_quality={s: 0},
             crafting_time=1,
             can_recycle=RecyclingMode.NONE
         )
-        for s in science_to_consider] # todo: add different qualities
+        for s in science_to_consider for q in range(5)] # todo: add different qualities
 
 
     global space_travel_recipes
@@ -1196,7 +1305,7 @@ def define_recipes():
     for recipe in recipes:
         all_outputs.update(recipe.outputs.keys())
     missing_outputs = set()
-    for recipe in recipes:
+    for recipe in recipes + science_dummy_recipes:
         for inp in recipe.inputs:
             if inp not in all_outputs:
                 missing_outputs.add(inp)
@@ -1354,6 +1463,16 @@ science_to_consider = [
     #"cryogenic_science",
     #"promethium_science",
 ]
+
+# goal = [
+#     {
+#         "item": s,
+#         "planet": None,
+#         "quality": 0,
+#         "amount": 10
+#     }
+#     for s in science_to_consider
+# ]
 
 
 # planet -> item -> cost scaling factor
